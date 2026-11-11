@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
-  SafeAreaView, View, Text, ScrollView, TouchableOpacity, TextInput,
+  SafeAreaView, View, Text, ScrollView, TouchableOpacity, TextInput, Image,
   ActivityIndicator, StyleSheet, RefreshControl, StatusBar, Platform,
 } from 'react-native';
 
@@ -15,6 +15,10 @@ const X = require('./exchanges');
 // ⬇⬇⬇ Wpisz swój login GitHub (instrukcja w README) ⬇⬇⬇
 const RESULTS_URL = 'https://raw.githubusercontent.com/TWOJ_LOGIN/tradingjam/data/results.json';
 const SERVER_ON = !RESULTS_URL.includes('TWOJ_LOGIN');
+// Dobrowolne wsparcie projektu
+const DONATE_ADDRESS = '0x3f0817931418f7B4678758c71b57ED7E2b5ce9e8';
+const DONATE_NETWORK = 'BNB Smart Chain (BEP-20)';
+const DONATE_TOKEN = 'USDT';
 const LOCAL_BINANCE = 12, LOCAL_BINGX = 6; // skan na telefonie, gdy brak serwera
 
 const HORIZONS = [['1h', '24 godz.'], ['4h', '3 dni'], ['1d', '14 dni']];
@@ -232,6 +236,36 @@ const GUIDE = [
   ['Czego aplikacja NIE robi', 'Nie zna przyszłości i nie gwarantuje zysku. Nie uwzględnia wiadomości, ogłoszeń ani manipulacji. Nie zna Twojej sytuacji finansowej, celów ani doświadczenia i nie wskazuje, co powinieneś kupić lub sprzedać. Pokazuje statystykę z przeszłości – decyzja i ryzyko są zawsze po Twojej stronie.'],
   ['Zastrzeżenia prawne', 'Treści w aplikacji mają charakter wyłącznie informacyjny i edukacyjny. Nie stanowią porady inwestycyjnej, doradztwa w zakresie kryptoaktywów, rekomendacji inwestycyjnej ani oferty w rozumieniu przepisów prawa, w tym rozporządzeń MiCA i MAR. Nie są spersonalizowane. Wyniki historyczne nie gwarantują przyszłych wyników. Handel kryptoaktywami, zwłaszcza z dźwignią, wiąże się z wysokim ryzykiem utraty całości zainwestowanych środków. Przed podjęciem decyzji rozważ skorzystanie z porady licencjonowanego doradcy.'],
 ];
+function Support() {
+  const [copied, setCopied] = useState('');
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(DONATE_ADDRESS); setCopied('Skopiowano adres ✓'); }
+    catch (e) { setCopied('Przytrzymaj adres palcem, żeby go zaznaczyć i skopiować.'); }
+  };
+  return (
+    <View>
+      <Text style={s.h2}>☕ Wesprzyj TradingJam</Text>
+      <Text style={s.li}>Aplikacja jest <Text style={{ fontWeight: '800' }}>darmowa dla wszystkich</Text>. Jeśli pomaga Ci lepiej rozumieć rynek, możesz dobrowolnie wesprzeć jej rozwój – na przykład kwotą 5 {DONATE_TOKEN}.</Text>
+      <View style={[s.card, { alignItems: 'center' }]}>
+        <View style={{ backgroundColor: '#fff', padding: 8, borderRadius: 10 }}>
+          <Image source={require('./assets/donate-qr.png')} style={{ width: 200, height: 200 }} />
+        </View>
+        <Text style={[s.small, { marginTop: 10 }]}>Adres ({DONATE_TOKEN} · {DONATE_NETWORK}):</Text>
+        <Text selectable style={{ color: C.text, fontWeight: '700', fontSize: 13, textAlign: 'center', marginTop: 4 }}>{DONATE_ADDRESS}</Text>
+        <TouchableOpacity onPress={copy} style={[s.btn, { marginTop: 10, paddingHorizontal: 24 }]}><Text style={s.btnT}>Kopiuj adres</Text></TouchableOpacity>
+        {copied ? <Text style={[s.small, { color: C.up }]}>{copied}</Text> : null}
+      </View>
+      <View style={[s.box, { borderColor: C.warn, marginTop: 10 }]}>
+        <Text style={{ color: C.warn, fontWeight: '800' }}>⚠ Ważne przed wysłaniem</Text>
+        <Text style={s.li}>• Wysyłaj wyłącznie <Text style={{ fontWeight: '800' }}>{DONATE_TOKEN}</Text> w sieci <Text style={{ fontWeight: '800' }}>{DONATE_NETWORK}</Text>.</Text>
+        <Text style={s.li}>• Inny token lub inna sieć (np. Ethereum, Tron) = ryzyko bezpowrotnej utraty środków.</Text>
+        <Text style={s.li}>• Do opłaty za przelew potrzebujesz odrobiny BNB w portfelu (zwykle kilka groszy).</Text>
+      </View>
+      <Text style={[s.small, { marginTop: 10 }]}>Wsparcie jest całkowicie dobrowolne. Nie daje dodatkowych funkcji ani usług i nie jest zapłatą za porady – wszystkie treści pozostają darmowe dla każdego.</Text>
+    </View>
+  );
+}
+
 function Guide() {
   const [open, setOpen] = useState(0);
   return (
@@ -408,6 +442,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [catF, setCatF] = useState('all');
   const [mode, setMode] = useState('safe');
+  const [bybitSet, setBybitSet] = useState(null);
   const scanning = useRef(false);
 
   const localScan = useCallback(async () => {
@@ -447,13 +482,18 @@ export default function App() {
   }, [localScan]);
 
   useEffect(() => { load(); }, []);
+  // Bybit blokuje serwery skanera, więc listę coinów z Bybit pobiera urządzenie użytkownika
+  useEffect(() => { X.bybitBases().then(set => { if (set && set.size) setBybitSet(set); }).catch(() => { }); }, []);
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const coins = useMemo(() => {
     const base = data ? data.coins : [];
     const seen = new Set(base.map(c => c.ex + c.sym));
-    return [...base, ...extra.filter(c => !seen.has(c.ex + c.sym))];
-  }, [data, extra]);
+    const all = [...base, ...extra.filter(c => !seen.has(c.ex + c.sym))];
+    if (!bybitSet) return all;
+    return all.map(c => (bybitSet.has(E.cleanBase(c.base)) && !(c.exs || []).includes('bybit')
+      ? { ...c, exs: [...(c.exs || [c.ex]), 'bybit'] } : c));
+  }, [data, extra, bybitSet]);
 
   const catItems = useMemo(() => {
     const n = {}; for (const c of coins) { const k = catKey(c); n[k] = (n[k] || 0) + 1; }
@@ -507,7 +547,7 @@ export default function App() {
       >
         <Text style={s.title}>TradingJam</Text>
         <Text style={s.small}>
-          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Skan'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX (Bybit w wyszukiwarce)` : 'Binance + BingX'}
+          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Skan'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
         </Text>
         {age > 3 && data && data.source === 'server' ? <Text style={[s.small, { color: C.warn }]}>Wyniki mają ponad {Math.floor(age)} godz. – sprawdź, czy skaner na GitHubie działa.</Text> : null}
         {status ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center' }}><ActivityIndicator color={C.accent} /><Text style={s.small}>{status}</Text></View> : null}
@@ -518,13 +558,13 @@ export default function App() {
           </View>
         ) : null}
 
-        {tab !== 'guide' ? (
+        {tab !== 'guide' && tab !== 'support' ? (
           <TouchableOpacity onPress={() => setTab('guide')} style={[s.box, { borderColor: C.accent, marginTop: 10 }]}>
             <Text style={{ color: C.accent, fontWeight: '800' }}>📘 Pierwszy raz? Przeczytaj Poradnik (2 min)</Text>
             <Text style={s.small}>Dowiesz się, co znaczą procenty, cel, stop i próg opłacalności oraz jak czytać wyniki.</Text>
           </TouchableOpacity>
         ) : null}
-        {tab === 'guide' ? <Guide /> : <>
+        {tab === 'guide' ? <Guide /> : tab === 'support' ? <Support /> : <>
         <View style={{ marginTop: 12 }}>
           <Text style={s.label}>Horyzont prognozy</Text>
           <Chips items={HORIZONS} value={iv} onChange={setIv} />
@@ -554,7 +594,8 @@ export default function App() {
           <View>
             <TextInput value={q} onChangeText={setQ} placeholder="Szukaj coina, np. PEPE" placeholderTextColor={C.mute}
               autoCapitalize="characters" autoCorrect={false} style={s.input} />
-            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)'], ['bybit', 'Bybit']]} value={exF} onChange={setExF} />
+            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)'], ...(bybitSet ? [['bybit', 'Też na Bybit']] : [])]} value={exF} onChange={setExF} />
+            {exF === 'bybit' ? <Text style={s.small}>Coiny dostępne także na Bybit. Statystyka jest liczona z danych Binance lub BingX – ceny na Bybit są zwykle bardzo zbliżone.</Text> : null}
             <Chips items={[['0', 'Każde %'], ['0.5', '≥ 50%'], ['0.6', '≥ 60%'], ['0.7', '≥ 70%']]} value={minP} onChange={setMinP} />
             <Chips items={[['p', 'Sortuj: prawdop.'], ['v', 'Wolumen'], ['c', 'Zmiana 24h']]} value={sortBy} onChange={setSortBy} />
             <Text style={[s.small, { marginVertical: 6 }]}>{filtered.length} coinów</Text>
@@ -585,7 +626,7 @@ export default function App() {
       </ScrollView>
 
       <View style={s.tabbar}>
-        {[['top', 'TOP 10'], ['all', 'Wszystkie coiny'], ['guide', 'Poradnik']].map(([k, t]) => (
+        {[['top', 'TOP 10'], ['all', 'Wszystkie'], ['guide', 'Poradnik'], ['support', '☕ Wesprzyj']].map(([k, t]) => (
           <TouchableOpacity key={k} onPress={() => setTab(k)} style={s.tabBtn}>
             <Text style={{ color: tab === k ? C.accent : C.mute, fontWeight: '700' }}>{t}</Text>
           </TouchableOpacity>

@@ -134,6 +134,13 @@ async function bybitTicker(sym) {
   if (!t) throw new Error('Nie ma takiej pary na Bybit');
   return { ex: 'bybit', sym, base: sym.replace(/USDT$/, ''), price: +t.lastPrice, chg: +t.price24hPcnt * 100, qv: +t.turnover24h };
 }
+// Lista coinów dostępnych na Bybit (kontrakty USDT) – pobierana na urządzeniu użytkownika
+async function bybitBases() {
+  const r = await bybitGet('/v5/market/tickers?category=linear');
+  const out = new Set();
+  for (const t of (r && r.list) || []) if (/USDT$/.test(t.symbol) && +t.turnover24h > 0) out.add(t.symbol.replace(/USDT$/, '').replace(/^(1000000|1000|1M)(?=[A-Z])/, ''));
+  return out;
+}
 async function bybitKlines(sym, iv, total) {
   const map = new Map(); let end = null;
   while (map.size < total) {
@@ -189,4 +196,4 @@ async function analyzeCoin(E, ticker, onProgress) {
   return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
 }
 
-module.exports = { bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
+module.exports = { bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
