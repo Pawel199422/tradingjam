@@ -107,7 +107,7 @@ async function main() {
   const catCount = {}; for (const c of coins) catCount[c.cat] = (catCount[c.cat] || 0) + 1;
   console.log('Kategorie:', JSON.stringify(catCount));
   for (const iv of ['1h', '4h', '1d']) {
-    console.log(`TOP 5 ${iv}: ` + E.rankTop(coins, iv, 'all', 5, 'safe').map(r => `${r.coin.base} ${r.d.dir} ${(r.d.p * 100).toFixed(0)}%${r.d.weak ? '(brak przewagi)' : ''}`).join(', '));
+    console.log(`TOP 5 ${iv}: ` + E.rankTop(coins, iv, 'all', 5, 'big').map(r => `${r.coin.base} ${r.d.dir} ${(r.d.p * 100).toFixed(0)}%${r.d.weak ? '(brak przewagi)' : ''}`).join(', '));
   }
   if (!coins.length) process.exit(1); // nie nadpisuj danych pustym wynikiem
 }

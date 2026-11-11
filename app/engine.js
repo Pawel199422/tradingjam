@@ -16,9 +16,15 @@ const VALID_N = 1000;    // ile ostatnich sytuacji do testu skuteczności
 const REFIT_EVERY = 200; // co ile świec model jest douczany w teście
 // Tryb „Bezpieczny cel”: bliższy cel (1× ATR), dalszy stop (2× ATR) – wyższa szansa trafienia, gorszy stosunek zysku do ryzyka
 const SAFE = { target: 1, stop: 2, thr: 0.65 };
+// Tryb „Duży cel” (2:1): cel 2× ATR, stop 1× ATR – rzadziej trafia, ale wygrana jest 2× większa od straty
+const BIG = { target: 2, stop: 1, thr: 0.40 };
 const BREAK_EVEN = SAFE.stop / (SAFE.target + SAFE.stop); // 66,7% – próg opłacalności przy celu 1:2
+// Próg opłacalności = stop / (cel + stop)
+const MODE_BE = { safe: BREAK_EVEN, big: BIG.stop / (BIG.target + BIG.stop), equal: 0.5 };
+const MODE_RR = { safe: '1:2', big: '2:1', equal: '1:1' };
 const HISTORY = 3000;    // ile świec historii pobierać na interwał
-const WARMUP = 60;       // świece na rozgrzanie wskaźników
+const WARMUP = 60;
+const REGIME_X = 4;        // historia: min. 4× wzrost (lub spadek do 1/4) = „jeden trend”       // świece na rozgrzanie wskaźników
 const EDGE_MIN = 0.15;   // próg przewagi P(wzrost) - P(spadek) dla sygnału
 
 function parseKlines(raw) {
@@ -154,7 +160,7 @@ function brier(p, y) {
 }
 
 // Model kierunkowy dla trybu „Bezpieczny cel”. Y: 1 = cel pierwszy, -1 = stop pierwszy, 0 = nic
-function dirModel(Z, Y, labelled, cur, H) {
+function dirModel(Z, Y, labelled, cur, H, thr) {
   let skill = null, hiHit = null, hiN = 0, nVal = 0;
   if (labelled.length >= 500) {
     const vs = labelled.slice(Math.max(300 + H, labelled.length - VALID_N));
@@ -163,7 +169,7 @@ function dirModel(Z, Y, labelled, cur, H) {
       if (t - fittedAt >= REFIT_EVERY) { model = fitModel(Z, Y, labelled.filter(i => i <= t - H), model && model.W); fittedAt = t; }
       const p = predictP(model, Z[t]);
       bm += brier(p, Y[t]); bb += brier(model.prior, Y[t]);
-      if (p[0] >= SAFE.thr) { cnt++; if (Y[t] === 1) hits++; }
+      if (p[0] >= thr) { cnt++; if (Y[t] === 1) hits++; }
     }
     skill = bb > 0 ? 1 - bm / bb : 0; hiN = cnt; hiHit = cnt ? hits / cnt : null; nVal = vs.length;
   }
@@ -214,13 +220,30 @@ function analyze(k, iv) {
   const YL = outcomes(k, raw, H, tg, st);
   const YS = outcomes(k, raw, H, st, tg).map(y => (y === null ? null : -y));
   const safe = {
-    long: dirModel(Z, YL, lab(YL), cur, H),
-    short: dirModel(Z, YS, lab(YS), cur, H),
+    long: dirModel(Z, YL, lab(YL), cur, H, SAFE.thr),
+    short: dirModel(Z, YS, lab(YS), cur, H, SAFE.thr),
     levels: { longT: price + tg * r.atr, longS: price - st * r.atr, shortT: price - tg * r.atr, shortS: price + st * r.atr },
   };
+  // Tryb „Duży cel” (2:1)
+  const tgB = BIG.target * scale, stB = BIG.stop * scale;
+  const YLb = outcomes(k, raw, H, tgB, stB);
+  const YSb = outcomes(k, raw, H, stB, tgB).map(y => (y === null ? null : -y));
+  const big = {
+    long: dirModel(Z, YLb, lab(YLb), cur, H, BIG.thr),
+    short: dirModel(Z, YSb, lab(YSb), cur, H, BIG.thr),
+    levels: { longT: price + tgB * r.atr, longS: price - stB * r.atr, shortT: price - tgB * r.atr, shortS: price + stB * r.atr },
+  };
+  // Historia z jednego trendu: coin w całej historii głównie rósł (albo spadał), a teraz idzie w drugą stronę
+  let hiC = -Infinity, loC = Infinity;
+  for (let i = WARMUP; i <= cur; i++) { if (k.c[i] > hiC) hiC = k.c[i]; if (k.c[i] < loC) loC = k.c[i]; }
+  const c0 = k.c[WARMUP];
+  let regime = null;
+  if (hiC / c0 >= REGIME_X && r.trend < -0.5 && price < hiC * 0.7) regime = { dir: 'up', x: hiC / c0, fromTop: price / hiC - 1 };
+  else if (loC / c0 <= 1 / REGIME_X && r.trend > 0.5 && price > loC * 1.4) regime = { dir: 'down', x: loC / c0, fromTop: price / loC - 1 };
   return {
+    regime,
     src: ALT_CFG[iv] ? '4h' : null,
-    safe,
+    safe, big,
     iv, label, horizonTxt, H, m, price,
     probs: { up: p[0], down: p[1], side: p[2] }, prior: { up: prior[0], down: prior[1], side: prior[2] },
     edge, signal, weak, skill, dirHit, dirN, nVal, nTrain: labelled.length,
@@ -249,24 +272,37 @@ function reasons(r, est) {
   return out;
 }
 
+// Czynniki, z których korzysta model (do opisu w aplikacji)
+const FACTORS = [
+  ['Średnia krocząca (EMA 50)', 'jak daleko cena jest od swojej średniej – trend'],
+  ['Nachylenie średniej (EMA 20)', 'czy krótki trend przyspiesza, czy hamuje'],
+  ['RSI 14', 'czy rynek jest przegrzany albo wyprzedany'],
+  ['Wolumen', 'czy obroty są większe czy mniejsze niż zwykle'],
+  ['Presja kupujących', 'jaka część ostatnich transakcji to zakupy'],
+  ['Delta wolumenu (CVD)', 'czy przez ostatnie 12 świec przeważało kupowanie czy sprzedawanie'],
+  ['Pozycja w zakresie', 'czy cena jest przy szczycie czy przy dołku z ostatnich 20 świec'],
+];
+
 // ---------- Wynik w zwartej postaci (do JSON i do UI) ----------
 const r4 = x => (x === null || x === undefined || !isFinite(x) ? null : Math.round(x * 1e4) / 1e4);
 const sig = x => (x === null || !isFinite(x) ? null : +x.toPrecision(6));
 const cDir = d => ({ p: r4(d.p), prior: r4(d.prior), skill: r4(d.skill), hiHit: r4(d.hiHit), hiN: d.hiN, nVal: d.nVal, weak: d.weak });
+const cMode = m => (m ? {
+  long: cDir(m.long), short: cDir(m.short),
+  levels: { longT: sig(m.levels.longT), longS: sig(m.levels.longS), shortT: sig(m.levels.shortT), shortS: sig(m.levels.shortS) },
+} : null);
 function compact(a) {
   if (!a || a.error) return { error: a ? a.error : 'Brak danych' };
   const R = a.raw;
   return {
     label: a.label, horizonTxt: a.horizonTxt, m: r4(a.m), price: sig(a.price), src: a.src || null,
+    regime: a.regime ? { dir: a.regime.dir, x: r4(a.regime.x), fromTop: r4(a.regime.fromTop) } : null,
     probs: { up: r4(a.probs.up), down: r4(a.probs.down), side: r4(a.probs.side) },
     prior: { up: r4(a.prior.up), down: r4(a.prior.down), side: r4(a.prior.side) },
     edge: r4(a.edge), signal: a.signal, weak: a.weak, skill: r4(a.skill),
     dirHit: r4(a.dirHit), dirN: a.dirN, nVal: a.nVal, nTrain: a.nTrain,
     levels: { up: sig(a.levels.up), down: sig(a.levels.down) },
-    safe: a.safe ? {
-      long: cDir(a.safe.long), short: cDir(a.safe.short),
-      levels: { longT: sig(a.safe.levels.longT), longS: sig(a.safe.levels.longS), shortT: sig(a.safe.levels.shortT), shortS: sig(a.safe.levels.shortS) },
-    } : null,
+    safe: cMode(a.safe), big: cMode(a.big),
     raw: { trend: r4(R.trend), slope: r4(R.slope), rsi: r4(R.rsi), volRatio: r4(R.volRatio), buy: r4(R.buy), cvd: r4(R.cvd), range: r4(R.range), atr: sig(R.atr) },
   };
 }
@@ -279,10 +315,11 @@ function dirOf(a, mode = 'equal', side = null) {
     dir, p, hist, target, stop, weak, skill, hiHit, hiN, nVal, mode: md,
     movePct: (target / a.price - 1) * 100, stopPct: (stop / a.price - 1) * 100,
   });
-  if (mode === 'safe' && a.safe) {
-    const S = a.safe, L = S.long, Sh = S.short;
-    const lo = mk('LONG', L.p, L.prior, S.levels.longT, S.levels.longS, L.weak, L.skill, L.hiHit, L.hiN, L.nVal, 'safe');
-    const sh = mk('SHORT', Sh.p, Sh.prior, S.levels.shortT, S.levels.shortS, Sh.weak, Sh.skill, Sh.hiHit, Sh.hiN, Sh.nVal, 'safe');
+  if (mode === 'safe' || mode === 'big') {
+    const S = a[mode]; if (!S) return null;
+    const L = S.long, Sh = S.short;
+    const lo = mk('LONG', L.p, L.prior, S.levels.longT, S.levels.longS, L.weak, L.skill, L.hiHit, L.hiN, L.nVal, mode);
+    const sh = mk('SHORT', Sh.p, Sh.prior, S.levels.shortT, S.levels.shortS, Sh.weak, Sh.skill, Sh.hiHit, Sh.hiN, Sh.nVal, mode);
     if (side === 'long') return lo;
     if (side === 'short') return sh;
     if (lo.weak !== sh.weak) return lo.weak ? sh : lo;
@@ -302,11 +339,12 @@ const isExtreme = c => Math.abs(c.chg || 0) >= EXTREME_PCT;
 const weakWhy = d => (!d || !d.weak ? null : d.skill === null || d.skill === undefined ? 'short' : 'noedge');
 
 // Opis statystyczny (neutralny – bez poleceń kupna/sprzedaży): { level, text }
-function verdict(d, coin) {
+function verdict(d, coin, a) {
   if (!d) return { level: 'none', text: 'Brak danych.' };
-  const be = d.mode === 'safe' ? BREAK_EVEN : 0.5;
+  const be = MODE_BE[d.mode] || 0.5;
   const pc = Math.round(d.p * 100), bc = Math.round(be * 100);
   if (isExtreme(coin)) return { level: 'avoid', text: 'Ekstremalna zmienność – cena zmieniła się o 40% lub więcej w 24h. Historia coina nie opisuje takiej sytuacji, statystyka jest tu niewiarygodna.' };
+  if (a && a.regime) return { level: 'avoid', text: `Historia z jednego trendu – dane ${coin.base} pochodzą głównie z okresu silnych ${a.regime.dir === 'up' ? 'wzrostów' : 'spadków'}, a teraz cena idzie w drugą stronę. Statystyka (${d.dir} ${pc}%) może być mocno skrzywiona.` };
   if (weakWhy(d) === 'short') return { level: 'none', text: 'Za mało danych – historia coina jest zbyt krótka, by zweryfikować model.' };
   if (weakWhy(d) === 'noedge') return { level: 'none', text: 'Brak przewagi statystycznej – w teście na historii model nie był trafniejszy niż zwykła średnia.' };
   if (d.p > be + 0.02) return { level: 'go', text: `Statystycznie: przewaga scenariusza ${d.dir} – ${pc}% przy progu opłacalności ${bc}%.` };
@@ -321,7 +359,7 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
     const d = dirOf(a, mode, dir === 'all' ? null : dir); if (!d || d.p === null) continue;
     rows.push({ coin: c, a, d });
   }
-  const bad = r => (r.d.weak || isExtreme(r.coin) ? 1 : 0);
+  const bad = r => (r.d.weak || isExtreme(r.coin) || (r.a && r.a.regime) ? 1 : 0);
   rows.sort((x, y) => (bad(x) - bad(y)) || (y.d.p - x.d.p));
   return rows.slice(0, n);
 }
@@ -360,4 +398,4 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+module.exports = { REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
