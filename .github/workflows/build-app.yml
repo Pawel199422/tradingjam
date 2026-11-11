@@ -1,0 +1,72 @@
+name: Budowanie aplikacji
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'scripts/**', '.github/workflows/build-app.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Projekt Expo
+        run: |
+          npx --yes create-expo-app@latest build --template blank --no-install
+          cp -r app/* build/
+          cd build
+          npm install
+          npx expo install react-dom react-native-web @expo/metro-runtime
+          sed -i "s#https://raw.githubusercontent.com/TWOJ_LOGIN/tradingjam/data/results.json#https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/data/results.json#" App.js
+          grep -n "RESULTS_URL =" App.js
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json'));j.expo.experiments={...(j.expo.experiments||{}),baseUrl:'/'+process.argv[1]};fs.writeFileSync('app.json',JSON.stringify(j,null,2))" "${GITHUB_REPOSITORY#*/}"
+
+      - name: Wersja web (iPhone i przeglądarka)
+        run: |
+          cd build
+          npx expo export --platform web --output-dir dist-web
+          cp assets/apple-touch-icon.png dist-web/
+          node ../scripts/web-meta.js dist-web/index.html "/${GITHUB_REPOSITORY#*/}"
+          touch dist-web/.nojekyll
+
+      - name: Publikacja web (gałąź gh-pages)
+        run: |
+          cd build/dist-web
+          git init -q
+          git config user.name "tradingjam-bot"
+          git config user.email "tradingjam-bot@users.noreply.github.com"
+          git checkout -q -b gh-pages
+          git add -A
+          git commit -q -m "Web $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
+
+      - name: APK Android
+        run: |
+          cd build
+          npx expo prebuild --platform android --no-install
+          cd android
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+          cp app/build/outputs/apk/release/app-release.apk ../../tradingjam.apk
+
+      - name: Publikacja APK (zakładka Releases)
+        env:
+          GH_TOKEN: ${{
