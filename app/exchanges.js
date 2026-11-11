@@ -120,8 +120,42 @@ async function bingxKlines(sym, iv, total) {
   return k;
 }
 
+// ---------- Bybit (tylko analiza na telefonie – Bybit blokuje serwery w USA) ----------
+const BYBIT = 'https://api.bybit.com';
+const BYBIT_IV = { '1h': '60', '4h': '240', '1d': 'D' };
+async function bybitGet(path) {
+  const j = await http(BYBIT + path);
+  if (j && j.retCode !== 0) throw new Error('Bybit: ' + (j.retMsg || j.retCode));
+  return j.result;
+}
+async function bybitTicker(sym) {
+  const r = await bybitGet(`/v5/market/tickers?category=linear&symbol=${sym}`);
+  const t = r && r.list && r.list[0];
+  if (!t) throw new Error('Nie ma takiej pary na Bybit');
+  return { ex: 'bybit', sym, base: sym.replace(/USDT$/, ''), price: +t.lastPrice, chg: +t.price24hPcnt * 100, qv: +t.turnover24h };
+}
+async function bybitKlines(sym, iv, total) {
+  const map = new Map(); let end = null;
+  while (map.size < total) {
+    const r = await bybitGet(`/v5/market/kline?category=linear&symbol=${sym}&interval=${BYBIT_IV[iv]}&limit=1000` + (end ? `&end=${end}` : ''));
+    const rows = (r && r.list ? r.list : []).map(x => [+x[0], +x[1], +x[2], +x[3], +x[4], +x[5]]);
+    if (!rows.length) break;
+    const before = map.size; let minT = Infinity;
+    for (const row of rows) { map.set(row[0], row); if (row[0] < minT) minT = row[0]; }
+    if (map.size === before || rows.length < 1000) break;
+    end = minT - 1;
+  }
+  const all = [...map.values()].sort((a, b) => a[0] - b[0]);
+  const k = { t: [], o: [], h: [], l: [], c: [], v: [], tb: [] };
+  for (const [t, o, h, l, c, v] of all) {
+    k.t.push(t); k.o.push(o); k.h.push(h); k.l.push(l); k.c.push(c); k.v.push(v);
+    k.tb.push(h > l ? v * (c - l) / (h - l) : v * 0.5); // szacunek presji kupna
+  }
+  return k;
+}
+
 // ---------- Wspólne ----------
-const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : binanceKlines(sym, iv, total));
+const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : ex === 'bybit' ? bybitKlines(sym, iv, total) : binanceKlines(sym, iv, total));
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
 async function analyzeCoin(E, ticker, onProgress) {
@@ -135,7 +169,7 @@ async function analyzeCoin(E, ticker, onProgress) {
     } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; }
     if (onProgress) onProgress(iv);
   }
-  return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex === 'bingx', spark, res };
+  return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
 }
 
-module.exports = { isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
+module.exports = { bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };

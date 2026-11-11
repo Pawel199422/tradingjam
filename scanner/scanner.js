@@ -65,8 +65,9 @@ async function main() {
   bn = bn.filter(notStock); bx = bx.filter(notStock);
 
   const binance = bn.filter(t => t.qv >= CONF.MIN_QV_BINANCE).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINANCE_TOP);
-  const onBinance = new Set(bn.map(t => t.base));
-  const bingx = bx.filter(t => t.qv >= CONF.MIN_QV_BINGX && !onBinance.has(t.base)).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINGX_TOP);
+  const onBinance = new Set(bn.map(t => E.cleanBase(t.base)));
+  const onBingx = new Set(bx.map(t => E.cleanBase(t.base)));
+  const bingx = bx.filter(t => t.qv >= CONF.MIN_QV_BINGX && !onBinance.has(E.cleanBase(t.base))).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINGX_TOP);
   const universe = [...binance, ...bingx];
   console.log(`Do analizy: ${binance.length} z Binance + ${bingx.length} z BingX`);
 
@@ -78,6 +79,7 @@ async function main() {
       try {
         const c = await X.analyzeCoin(E, t);
         c.cat = E.catOf(t.base, cg);
+        c.exs = [onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx'].filter(Boolean);
         if (Object.values(c.res).some(a => !a.error)) coins.push(c);
       } catch (e) { errors.push(`${t.ex} ${t.sym}: ${e.message}`); }
       done++;
@@ -102,7 +104,7 @@ async function main() {
   const catCount = {}; for (const c of coins) catCount[c.cat] = (catCount[c.cat] || 0) + 1;
   console.log('Kategorie:', JSON.stringify(catCount));
   for (const iv of ['1h', '4h', '1d']) {
-    console.log(`TOP 5 ${iv}: ` + E.rankTop(coins, iv, 'all', 5).map(r => `${r.coin.base} ${r.d.dir} ${(r.d.p * 100).toFixed(0)}%`).join(', '));
+    console.log(`TOP 5 ${iv}: ` + E.rankTop(coins, iv, 'all', 5, 'safe').map(r => `${r.coin.base} ${r.d.dir} ${(r.d.p * 100).toFixed(0)}%${r.d.weak ? '(brak przewagi)' : ''}`).join(', '));
   }
   if (!coins.length) process.exit(1); // nie nadpisuj danych pustym wynikiem
 }

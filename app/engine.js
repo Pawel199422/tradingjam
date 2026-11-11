@@ -9,7 +9,10 @@ const CFG = {
   '1d': { label: '1D', H: 14, m: 2, horizonTxt: '14 dni' },
 };
 const VALID_N = 1000;    // ile ostatnich sytuacji do testu skuteczności
-const REFIT_EVERY = 100; // co ile świec model jest douczany w teście
+const REFIT_EVERY = 200; // co ile świec model jest douczany w teście
+// Tryb „Bezpieczny cel”: bliższy cel (1× ATR), dalszy stop (2× ATR) – wyższa szansa trafienia, gorszy stosunek zysku do ryzyka
+const SAFE = { target: 1, stop: 2, thr: 0.65 };
+const BREAK_EVEN = SAFE.stop / (SAFE.target + SAFE.stop); // 66,7% – próg opłacalności przy celu 1:2
 const HISTORY = 3000;    // ile świec historii pobierać na interwał
 const WARMUP = 60;       // świece na rozgrzanie wskaźników
 const EDGE_MIN = 0.15;   // próg przewagi P(wzrost) - P(spadek) dla sygnału
@@ -81,12 +84,13 @@ function buildFeatures(k) {
   return { F, raw };
 }
 
-// Co się wydarzyło po każdej świecy: 1 = najpierw +m·ATR, -1 = najpierw -m·ATR, 0 = ani to, ani to
-function outcomes(k, raw, H, m) {
+// Co się wydarzyło po każdej świecy: 1 = najpierw +mUp·ATR, -1 = najpierw -mDn·ATR, 0 = ani to, ani to
+function outcomes(k, raw, H, m, mDn) {
+  if (mDn === undefined) mDn = m;
   const { h, l, c } = k; const n = c.length; const Y = new Array(n).fill(null);
   for (let i = 0; i < n - H; i++) {
     const r = raw[i]; if (!r) continue;
-    const up = c[i] + m * r.atr, dn = c[i] - m * r.atr; let y = 0;
+    const up = c[i] + m * r.atr, dn = c[i] - mDn * r.atr; let y = 0;
     for (let j = i + 1; j <= i + H; j++) {
       const hu = h[j] >= up, hd = l[j] <= dn;
       if (hu && hd) { y = 0; break; }
@@ -145,6 +149,24 @@ function brier(p, y) {
   return (p[0] - t[0]) ** 2 + (p[1] - t[1]) ** 2 + (p[2] - t[2]) ** 2;
 }
 
+// Model kierunkowy dla trybu „Bezpieczny cel”. Y: 1 = cel pierwszy, -1 = stop pierwszy, 0 = nic
+function dirModel(Z, Y, labelled, cur, H) {
+  let skill = null, hiHit = null, hiN = 0, nVal = 0;
+  if (labelled.length >= 500) {
+    const vs = labelled.slice(Math.max(300 + H, labelled.length - VALID_N));
+    let bm = 0, bb = 0, hits = 0, cnt = 0, model = null, fittedAt = -Infinity;
+    for (const t of vs) {
+      if (t - fittedAt >= REFIT_EVERY) { model = fitModel(Z, Y, labelled.filter(i => i <= t - H), model && model.W); fittedAt = t; }
+      const p = predictP(model, Z[t]);
+      bm += brier(p, Y[t]); bb += brier(model.prior, Y[t]);
+      if (p[0] >= SAFE.thr) { cnt++; if (Y[t] === 1) hits++; }
+    }
+    skill = bb > 0 ? 1 - bm / bb : 0; hiN = cnt; hiHit = cnt ? hits / cnt : null; nVal = vs.length;
+  }
+  const model = fitModel(Z, Y, labelled); const p = predictP(model, Z[cur]);
+  return { p: p[0], prior: model.prior[0], skill, hiHit, hiN, nVal, weak: skill === null || skill <= 0 };
+}
+
 function analyze(k, iv) {
   const { H, m, horizonTxt, label } = CFG[iv];
   const n = k.c.length; const cur = n - 2; // ostatnia ZAMKNIĘTA świeca
@@ -181,7 +203,17 @@ function analyze(k, iv) {
   const signal = edge >= EDGE_MIN ? 'KUPNO' : edge <= -EDGE_MIN ? 'SPRZEDAŻ' : 'NEUTRALNY';
   const weak = skill === null || skill <= 0; // test na historii nie wykazał przewagi
   const r = raw[cur]; const price = k.c[cur];
+  // Tryb „Bezpieczny cel”: osobne modele dla LONG i SHORT
+  const lab = YY => labelled.filter(i => YY[i] !== null);
+  const YL = outcomes(k, raw, H, SAFE.target, SAFE.stop);
+  const YS = outcomes(k, raw, H, SAFE.stop, SAFE.target).map(y => (y === null ? null : -y));
+  const safe = {
+    long: dirModel(Z, YL, lab(YL), cur, H),
+    short: dirModel(Z, YS, lab(YS), cur, H),
+    levels: { longT: price + SAFE.target * r.atr, longS: price - SAFE.stop * r.atr, shortT: price - SAFE.target * r.atr, shortS: price + SAFE.stop * r.atr },
+  };
   return {
+    safe,
     iv, label, horizonTxt, H, m, price,
     probs: { up: p[0], down: p[1], side: p[2] }, prior: { up: prior[0], down: prior[1], side: prior[2] },
     edge, signal, weak, skill, dirHit, dirN, nVal, nTrain: labelled.length,
@@ -211,6 +243,7 @@ function reasons(r, est) {
 // ---------- Wynik w zwartej postaci (do JSON i do UI) ----------
 const r4 = x => (x === null || x === undefined || !isFinite(x) ? null : Math.round(x * 1e4) / 1e4);
 const sig = x => (x === null || !isFinite(x) ? null : +x.toPrecision(6));
+const cDir = d => ({ p: r4(d.p), prior: r4(d.prior), skill: r4(d.skill), hiHit: r4(d.hiHit), hiN: d.hiN, nVal: d.nVal, weak: d.weak });
 function compact(a) {
   if (!a || a.error) return { error: a ? a.error : 'Brak danych' };
   const R = a.raw;
@@ -221,37 +254,48 @@ function compact(a) {
     edge: r4(a.edge), signal: a.signal, weak: a.weak, skill: r4(a.skill),
     dirHit: r4(a.dirHit), dirN: a.dirN, nVal: a.nVal, nTrain: a.nTrain,
     levels: { up: sig(a.levels.up), down: sig(a.levels.down) },
+    safe: a.safe ? {
+      long: cDir(a.safe.long), short: cDir(a.safe.short),
+      levels: { longT: sig(a.safe.levels.longT), longS: sig(a.safe.levels.longS), shortT: sig(a.safe.levels.shortT), shortS: sig(a.safe.levels.shortS) },
+    } : null,
     raw: { trend: r4(R.trend), slope: r4(R.slope), rsi: r4(R.rsi), volRatio: r4(R.volRatio), buy: r4(R.buy), cvd: r4(R.cvd), range: r4(R.range), atr: sig(R.atr) },
   };
 }
 
-// Kierunek scenariusza: LONG jeśli wzrost bardziej prawdopodobny niż spadek, inaczej SHORT
-function dirOf(a) {
+// Scenariusz dla trybu: 'safe' (cel 1 ATR / stop 2 ATR) lub 'equal' (±2 ATR).
+// side: 'long' | 'short' wymusza kierunek; bez niego wybierany jest mocniejszy.
+function dirOf(a, mode = 'equal', side = null) {
   if (!a || a.error) return null;
-  const long = a.probs.up >= a.probs.down;
-  const p = long ? a.probs.up : a.probs.down;
-  const lvl = long ? a.levels.up : a.levels.down;
-  return {
-    dir: long ? 'LONG' : 'SHORT', p,
-    hist: long ? a.prior.up : a.prior.down,      // jak często taki ruch zdarzał się zwykle
-    target: lvl, movePct: (lvl / a.price - 1) * 100,
-    stop: long ? a.levels.down : a.levels.up,
-  };
+  const mk = (dir, p, hist, target, stop, weak, skill, hiHit, hiN, nVal, md) => ({
+    dir, p, hist, target, stop, weak, skill, hiHit, hiN, nVal, mode: md,
+    movePct: (target / a.price - 1) * 100, stopPct: (stop / a.price - 1) * 100,
+  });
+  if (mode === 'safe' && a.safe) {
+    const S = a.safe, L = S.long, Sh = S.short;
+    const lo = mk('LONG', L.p, L.prior, S.levels.longT, S.levels.longS, L.weak, L.skill, L.hiHit, L.hiN, L.nVal, 'safe');
+    const sh = mk('SHORT', Sh.p, Sh.prior, S.levels.shortT, S.levels.shortS, Sh.weak, Sh.skill, Sh.hiHit, Sh.hiN, Sh.nVal, 'safe');
+    if (side === 'long') return lo;
+    if (side === 'short') return sh;
+    if (lo.weak !== sh.weak) return lo.weak ? sh : lo;
+    return lo.p >= sh.p ? lo : sh;
+  }
+  const long = side ? side === 'long' : a.probs.up >= a.probs.down;
+  return mk(long ? 'LONG' : 'SHORT', long ? a.probs.up : a.probs.down, long ? a.prior.up : a.prior.down,
+    long ? a.levels.up : a.levels.down, long ? a.levels.down : a.levels.up,
+    a.weak, a.skill, a.dirHit, a.dirN, a.nVal, 'equal');
 }
 
-// TOP N: najwyższe prawdopodobieństwo scenariusza; coiny bez potwierdzonej przewagi idą na koniec
-function rankTop(coins, iv, dir = 'all', n = 10) {
+// TOP N: najwyższe prawdopodobieństwo; scenariusze bez potwierdzonej przewagi idą na koniec
+function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
   const rows = [];
   for (const c of coins) {
-    const a = c.res && c.res[iv]; const d = dirOf(a); if (!d) continue;
-    if (dir === 'long' && d.dir !== 'LONG') continue;
-    if (dir === 'short' && d.dir !== 'SHORT') continue;
+    const a = c.res && c.res[iv];
+    const d = dirOf(a, mode, dir === 'all' ? null : dir); if (!d || d.p === null) continue;
     rows.push({ coin: c, a, d });
   }
-  rows.sort((x, y) => (x.a.weak - y.a.weak) || (y.d.p - x.d.p));
+  rows.sort((x, y) => (x.d.weak - y.d.weak) || (y.d.p - x.d.p));
   return rows.slice(0, n);
 }
-
 
 // ---------- Kategorie coinów ----------
 const CATS = {
@@ -287,4 +331,4 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+module.exports = { SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };

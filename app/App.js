@@ -75,17 +75,54 @@ const CatBadge = ({ coin }) => {
   );
 };
 
+// ---------- Plakietki ----------
+const EX = { binance: ['Binance', '#f0b90b'], bingx: ['BingX', '#2a7cf6'], bybit: ['Bybit', '#f7a600'] };
+const ExBadge = ({ ex, dim }) => {
+  const [label, color] = EX[ex] || [ex, C.mute];
+  return (
+    <View style={[s.badge, { borderColor: color, opacity: dim ? 0.55 : 1 }]}>
+      <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{label}</Text>
+    </View>
+  );
+};
+// Giełdy, na których jest coin (pierwsza = z niej liczona analiza)
+const ExBadges = ({ coin }) => {
+  const list = [coin.ex, ...(coin.exs || []).filter(e => e !== coin.ex)];
+  return <>{list.map((e, i) => <ExBadge key={e} ex={e} dim={i > 0} />)}</>;
+};
+
+const MODES = [['safe', 'Bezpieczny cel (wyższa szansa)'], ['equal', 'Równy cel (większy ruch)']];
+const MODE_INFO = {
+  safe: 'Cel blisko (1× typowa zmienność), stop dalej (2×). Trafia częściej, ale zysk jest mniejszy niż możliwa strata. Opłaca się dopiero powyżej 67%.',
+  equal: 'Cel i stop w tej samej odległości (2× typowa zmienność). Zysk = możliwa strata, więc opłaca się już powyżej 50%.',
+};
+const breakEven = d => (d.mode === 'safe' ? E.BREAK_EVEN : 0.5);
+const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
+
+// Wyjaśnienie, co znaczy „brak przewagi”
+function WeakNote({ coin }) {
+  return (
+    <View style={[s.box, { borderColor: C.warn, marginTop: 8 }]}>
+      <Text style={{ color: C.warn, fontWeight: '800' }}>⚠ Brak przewagi – nie sugeruj się tym procentem</Text>
+      <Text style={[s.li, { marginTop: 4 }]}>
+        Sprawdziliśmy ten model na ostatnich ~1000 świecach {coin.base}, których nie widział podczas nauki. Jego prognozy nie były trafniejsze niż zwykła statystyka, czyli to, jak często {coin.base} w ogóle robi taki ruch. Procent może więc być przypadkowy. Dla tego coina wykres po prostu niewiele mówi o przyszłości.
+      </Text>
+    </View>
+  );
+}
+
 function Legend() {
   const [open, setOpen] = useState(false);
   const items = [
-    ['LONG 53%', 'szansa 53%, że cena najpierw WZROŚNIE do celu, zanim spadnie o tyle samo. SHORT – odwrotnie: najpierw spadek.'],
-    ['50% = rzut monetą', 'każdy punkt powyżej 50% to przewaga. Na rynku krypto realne przewagi to zwykle 52–58%.'],
-    ['Cel +2,5%', 'poziom ceny, do którego liczony jest ruch – 2× typowa zmienność danego coina (ATR).'],
-    ['24 godz. / 3 dni / 14 dni', 'w jakim czasie ma się wydarzyć scenariusz. Krótszy horyzont = szybszy, ale bardziej losowy ruch.'],
-    ['trafność 61%', 'jak często model trafiał kierunek, gdy dawał mocny sygnał – sprawdzone na historii tego coina.'],
-    ['słaby model', 'na historii tego coina model nie był lepszy od zgadywania średniej. Procent jest wtedy tylko orientacyjny.'],
-    ['Kategoria', 'typ projektu: Memecoin, AI, Layer 1/2 (blockchainy), DeFi (finanse), Gaming, RWA (realne aktywa), DePIN (infrastruktura), Token giełdy.'],
-    ['BingX', 'giełda z mniejszymi projektami (lowcapy). Wyższe ryzyko, presja kupna szacowana z kształtu świec.'],
+    ['LONG 72%', 'szansa 72%, że cena najpierw dojdzie do celu w górę, zanim dojdzie do stopu w dół. SHORT – odwrotnie.'],
+    ['Bezpieczny cel', 'cel blisko, stop 2× dalej. Daje wysokie procenty (60–80%), ale żeby zarabiać, trzeba trafiać częściej niż 67%. Zielone „✓ powyżej progu” = model przekracza ten próg.'],
+    ['Równy cel', 'cel i stop w tej samej odległości. Procenty niższe (45–60%), ale opłacalne już powyżej 50%.'],
+    ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
+    ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
+    ['brak przewagi', 'w teście na historii model nie był lepszy niż zwykła statystyka – procent może być przypadkowy. Takie coiny są wyszarzone i na końcu listy.'],
+    ['24 godz. / 3 dni / 14 dni', 'w jakim czasie ma się wydarzyć scenariusz.'],
+    ['Kategoria', 'typ projektu: Memecoin, AI, Layer 1/2, DeFi, Gaming, RWA, DePIN, Token giełdy.'],
+    ['Giełdy', 'pierwsza plakietka = giełda, z której liczona jest analiza; wyblakłe = coin jest też tam.'],
   ];
   return (
     <View style={[s.card, { paddingVertical: 10 }]}>
@@ -98,12 +135,6 @@ function Legend() {
     </View>
   );
 }
-
-const ExBadge = ({ ex }) => (
-  <View style={[s.badge, { borderColor: ex === 'bingx' ? C.bingx : C.binance }]}>
-    <Text style={{ color: ex === 'bingx' ? C.bingx : C.binance, fontSize: 10, fontWeight: '700' }}>{ex === 'bingx' ? 'BingX' : 'Binance'}</Text>
-  </View>
-);
 
 function Chips({ items, value, onChange }) {
   return (
@@ -134,85 +165,98 @@ function ProbBar({ label, p, color, sub }) {
 
 // ---------- Wiersz TOP 10 ----------
 function TopRow({ rank, row, horizonTxt, onPress }) {
-  const { coin, a, d } = row;
+  const { coin, d } = row;
+  const col = d.weak ? C.mute : dirColor(d.dir);
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={s.card}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[s.card, d.weak && { opacity: 0.75 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={s.rank}>{rank}</Text>
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={s.sym}>{coin.base}</Text><CatBadge coin={coin} /><ExBadge ex={coin.ex} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <Text style={s.sym}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} />
           </View>
           <Text style={s.small}>{fmtPrice(coin.price)} $ · 24h <Text style={{ color: coin.chg >= 0 ? C.up : C.down }}>{sgn(coin.chg)}</Text></Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <View style={[s.dirPill, { backgroundColor: dirColor(d.dir) }]}><Text style={s.dirPillT}>{d.dir}</Text></View>
-          <Text style={[s.bigPct, { color: dirColor(d.dir) }]}>{pct0(d.p)}</Text>
+          <View style={[s.dirPill, { backgroundColor: col }]}><Text style={s.dirPillT}>{d.dir}</Text></View>
+          <Text style={[s.bigPct, { color: col }]}>{pct0(d.p)}</Text>
         </View>
       </View>
       <View style={{ marginTop: 8 }}><Sparkline data={coin.spark} h={24} /></View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-        <Text style={s.meta}>Cel {sgn(d.movePct)} → {fmtPrice(d.target)} w {horizonTxt}</Text>
-        {a.weak
-          ? <Text style={[s.meta, { color: C.warn }]}>słaby model</Text>
-          : <Text style={s.meta}>{a.dirHit !== null ? `trafność ${pct0(a.dirHit)}` : `przewaga +${(a.skill * 100).toFixed(1)}%`}</Text>}
+      <Text style={[s.meta, { marginTop: 8 }]}>Cel {sgn(d.movePct)} ({fmtPrice(d.target)}) · Stop {sgn(d.stopPct)} · w {horizonTxt}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+        <Text style={s.meta}>normalnie {pct0(d.hist)}{d.hiHit !== null && d.hiN >= 20 ? ` · trafność ${pct0(d.hiHit)}` : ''}</Text>
+        {d.weak
+          ? <Text style={[s.meta, { color: C.warn }]}>⚠ brak przewagi</Text>
+          : aboveBE(d) ? <Text style={[s.meta, { color: C.up }]}>✓ powyżej progu {pct0(breakEven(d))}</Text>
+            : <Text style={s.meta}>poniżej progu {pct0(breakEven(d))}</Text>}
       </View>
     </TouchableOpacity>
   );
 }
 
+// Karta jednego scenariusza w szczegółach
+function ScenarioCard({ coin, d, horizonTxt }) {
+  const col = d.weak ? C.mute : dirColor(d.dir);
+  return (
+    <View style={[s.card, { borderColor: col }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+        <Text style={{ color: col, fontSize: 24, fontWeight: '900' }}>{d.dir}</Text>
+        <Text style={{ color: col, fontSize: 24, fontWeight: '900' }}>{pct1(d.p)}</Text>
+        {aboveBE(d) ? <Text style={{ color: C.up, fontWeight: '700' }}>✓ powyżej progu</Text> : null}
+      </View>
+      <Text style={s.li}>Cel: {fmtPrice(d.target)} ({sgn(d.movePct)}) · Stop: {fmtPrice(d.stop)} ({sgn(d.stopPct)}) · w {horizonTxt}</Text>
+      <Text style={s.small}>Normalnie {coin.base} robi taki ruch w {pct0(d.hist)} przypadków – teraz {d.p >= d.hist ? 'częściej' : 'rzadziej'} o {Math.abs((d.p - d.hist) * 100).toFixed(1)} pkt proc. Próg opłacalności: {pct0(breakEven(d))}.</Text>
+      {d.hiHit !== null && d.hiN >= 20
+        ? <Text style={s.small}>Test na historii: gdy model dawał {d.mode === 'safe' ? '≥65%' : 'mocny sygnał'}, trafiał w {pct1(d.hiHit)} przypadków ({d.hiN} razy w ostatnich {d.nVal} świecach).</Text>
+        : null}
+      {d.weak ? <WeakNote coin={coin} /> : null}
+    </View>
+  );
+}
+
 // ---------- Szczegóły coina ----------
-function Detail({ coin, iv0, onBack }) {
+function Detail({ coin, iv0, mode0, onBack }) {
   const [iv, setIv] = useState(iv0);
-  const a = coin.res[iv]; const d = E.dirOf(a);
+  const [mode, setMode] = useState(mode0);
+  const a = coin.res[iv];
+  const ok = a && !a.error && (mode === 'equal' || a.safe);
   return (
     <ScrollView contentContainerStyle={s.page}>
       <TouchableOpacity onPress={onBack} style={{ marginBottom: 10 }}><Text style={{ color: C.accent, fontSize: 16 }}>‹ Wróć</Text></TouchableOpacity>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text style={s.title}>{coin.base}</Text><CatBadge coin={coin} /><ExBadge ex={coin.ex} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Text style={s.title}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} />
       </View>
       <Text style={s.small}>{fmtPrice(coin.price)} $ · 24h <Text style={{ color: coin.chg >= 0 ? C.up : C.down }}>{sgn(coin.chg)}</Text> · wol. {fmtVol(coin.qv)}</Text>
+      {(coin.exs || []).length > 1 ? <Text style={s.small}>Dostępny na: {coin.exs.map(e => (EX[e] || [e])[0]).join(', ')} · analiza z {(EX[coin.ex] || [coin.ex])[0]}</Text> : null}
       <View style={{ marginVertical: 12 }}><Sparkline data={coin.spark} h={48} /></View>
+      <Text style={s.label}>Horyzont</Text>
       <Chips items={HORIZONS} value={iv} onChange={setIv} />
       <Text style={s.small}>{HORIZON_INFO[iv]}</Text>
+      <Text style={s.label}>Rodzaj celu</Text>
+      <Chips items={MODES} value={mode} onChange={setMode} />
+      <Text style={s.small}>{MODE_INFO[mode]}</Text>
 
-      {!a || a.error ? <Text style={[s.small, { marginTop: 12 }]}>{a ? a.error : 'Brak danych'}</Text> : (
+      {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? a.error : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
         <View>
-          <View style={[s.card, { borderColor: dirColor(d.dir), marginTop: 10 }]}>
-            <Text style={s.small}>Najbardziej prawdopodobny scenariusz na {a.horizonTxt}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
-              <Text style={{ color: dirColor(d.dir), fontSize: 28, fontWeight: '900' }}>{d.dir}</Text>
-              <Text style={{ color: dirColor(d.dir), fontSize: 28, fontWeight: '900' }}>{pct1(d.p)}</Text>
-            </View>
-            <Text style={s.li}>Cel: {fmtPrice(d.target)} ({sgn(d.movePct)}) · unieważnienie: {fmtPrice(d.stop)}</Text>
-            <Text style={s.small}>Normalnie taki ruch u {coin.base} zdarza się w {pct0(d.hist)} przypadków – teraz {d.p >= d.hist ? 'częściej' : 'rzadziej'} o {Math.abs((d.p - d.hist) * 100).toFixed(1)} pkt proc.</Text>
-            {a.weak ? <Text style={[s.small, { color: C.warn, marginTop: 6 }]}>Uwaga: na historii tego coina model nie był lepszy od średniej – wynik orientacyjny.</Text> : null}
-          </View>
-
-          <Text style={s.h3}>Wszystkie scenariusze ({a.horizonTxt}, ruch ±{a.m}× ATR)</Text>
-          <ProbBar label="Wzrost (LONG)" p={a.probs.up} color={C.up} sub={`cel ≈ ${fmtPrice(a.levels.up)} · historycznie ${pct0(a.prior.up)}`} />
-          <ProbBar label="Spadek (SHORT)" p={a.probs.down} color={C.down} sub={`poziom ≈ ${fmtPrice(a.levels.down)} · historycznie ${pct0(a.prior.down)}`} />
-          <ProbBar label="Konsolidacja" p={a.probs.side} color={C.side} sub={`żaden poziom nie zostanie osiągnięty · historycznie ${pct0(a.prior.side)}`} />
+          <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
+          {(() => {
+            const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
+            const first = L.weak === S.weak ? (L.p >= S.p ? 'L' : 'S') : (L.weak ? 'S' : 'L');
+            const cards = [<ScenarioCard key="L" coin={coin} d={L} horizonTxt={a.horizonTxt} />, <ScenarioCard key="S" coin={coin} d={S} horizonTxt={a.horizonTxt} />];
+            return first === 'L' ? cards : cards.reverse();
+          })()}
+          {mode === 'equal' ? (
+            <ProbBar label="Konsolidacja (żaden poziom)" p={a.probs.side} color={C.side} sub={`historycznie ${pct0(a.prior.side)}`} />
+          ) : null}
 
           <Text style={s.h3}>Jak wygląda wykres ({a.label})</Text>
           {E.reasons(a.raw, coin.est).map((t, i) => <Text key={i} style={s.li}>• {t}</Text>)}
-          {coin.est ? <Text style={s.small}>BingX nie udostępnia wolumenu kupujących – presja jest szacowana z położenia zamknięcia w świecy.</Text> : null}
-
-          <Text style={s.h3}>Wiarygodność dla {coin.base}</Text>
-          {a.skill === null ? <Text style={s.li}>• Za krótka historia, żeby przetestować model.</Text> : (
-            <View>
-              <Text style={[s.li, { color: a.skill > 0.02 ? C.up : a.skill > 0 ? C.warn : C.down }]}>
-                • Lepszy od „zgadywania średnią” o {(a.skill * 100).toFixed(1)}%{a.skill <= 0 ? ' – brak przewagi' : ''}
-              </Text>
-              {a.dirHit !== null
-                ? <Text style={s.li}>• Gdy był mocny sygnał, kierunek trafiony w {pct1(a.dirHit)} ({a.dirN} sygnałów w ostatnich {a.nVal} świecach)</Text>
-                : <Text style={s.li}>• W okresie testu nie było mocnych sygnałów</Text>}
-            </View>
-          )}
-          <Text style={s.small}>Model wytrenowany na {a.nTrain} świecach {coin.base} ({a.label}), osobno dla każdego coina i interwału.</Text>
+          {coin.est ? <Text style={s.small}>Ta giełda nie udostępnia wolumenu kupujących – presja jest szacowana z położenia zamknięcia w świecy.</Text> : null}
+          <Text style={s.small}>Model wytrenowany na {a.nTrain} świecach {coin.base} ({a.label}), osobno dla każdego coina, interwału i kierunku.</Text>
         </View>
       )}
-      <Text style={[s.small, { marginTop: 20 }]}>Procent = szansa, że cena w podanym czasie najpierw dojdzie do celu, a nie do poziomu w przeciwną stronę. Liczone z tego, jak kończyły się podobne układy wykresu w historii coina. Nie jest to porada inwestycyjna.</Text>
+      <Text style={[s.small, { marginTop: 20 }]}>Procent = szansa, że cena w podanym czasie najpierw dojdzie do celu, a nie do stopu. Liczone z tego, jak kończyły się podobne układy wykresu w historii coina. Nie jest to porada inwestycyjna.</Text>
     </ScrollView>
   );
 }
@@ -235,6 +279,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState('p');
   const [busy, setBusy] = useState(false);
   const [catF, setCatF] = useState('all');
+  const [mode, setMode] = useState('safe');
   const scanning = useRef(false);
 
   const localScan = useCallback(async () => {
@@ -245,10 +290,10 @@ export default function App() {
       try { bn = await X.binanceTickers(); } catch (e) { }
       try { bx = await X.bingxTickers(); } catch (e) { }
       if (!bn.length && !bx.length) throw new Error('Brak połączenia z giełdami');
-      const onBn = new Set(bn.map(t => t.base));
+      const onBn = new Set(bn.map(t => E.cleanBase(t.base)));
       const list = [
         ...bn.sort((a, b) => b.qv - a.qv).slice(0, LOCAL_BINANCE),
-        ...bx.filter(t => !onBn.has(t.base) && t.qv > 5e5).sort((a, b) => b.qv - a.qv).slice(0, LOCAL_BINGX),
+        ...bx.filter(t => !onBn.has(E.cleanBase(t.base)) && t.qv > 5e5).sort((a, b) => b.qv - a.qv).slice(0, LOCAL_BINGX),
       ];
       const coins = [];
       for (let i = 0; i < list.length; i++) {
@@ -287,28 +332,29 @@ export default function App() {
     return [['all', 'Wszystkie kategorie'], ...Object.keys(E.CATS).filter(k => n[k]).map(k => [k, `${E.CATS[k].label} (${n[k]})`])];
   }, [coins]);
   const coinsCat = useMemo(() => (catF === 'all' ? coins : coins.filter(c => catKey(c) === catF)), [coins, catF]);
-  const top = useMemo(() => E.rankTop(coinsCat, iv, dir, 10), [coinsCat, iv, dir]);
+  const top = useMemo(() => E.rankTop(coinsCat, iv, dir, 10, mode), [coinsCat, iv, dir, mode]);
   const horizonTxt = E.CFG[iv].horizonTxt;
 
   const filtered = useMemo(() => {
     const Q = q.trim().toUpperCase();
-    let rows = coinsCat.map(c => ({ c, d: E.dirOf(c.res[iv]), a: c.res[iv] }))
-      .filter(r => (!Q || r.c.base.includes(Q)) && (exF === 'all' || r.c.ex === exF))
-      .filter(r => minP === '0' || (r.d && r.d.p >= +minP))
-      .filter(r => dir === 'all' || (r.d && r.d.dir === (dir === 'long' ? 'LONG' : 'SHORT')));
+    let rows = coinsCat.map(c => ({ c, d: E.dirOf(c.res[iv], mode, dir === 'all' ? null : dir), a: c.res[iv] }))
+      .filter(r => (!Q || r.c.base.includes(Q)) && (exF === 'all' || r.c.ex === exF || (r.c.exs || []).includes(exF)))
+      .filter(r => minP === '0' || (r.d && r.d.p >= +minP));
     const key = { p: r => (r.d ? r.d.p : -1), v: r => r.c.qv, c: r => r.c.chg }[sortBy];
     return rows.sort((x, y) => key(y) - key(x));
-  }, [coinsCat, iv, q, exF, minP, sortBy, dir]);
+  }, [coinsCat, iv, q, exF, minP, sortBy, dir, mode]);
 
   const analyzeOnDemand = async () => {
     const base = q.trim().toUpperCase().replace(/[\s\/\-_]|USDT$/g, ''); if (!base) return;
     setBusy(true); setErr(null);
     try {
       let t;
-      try { t = await X.binanceTicker(base + 'USDT'); } catch (e) { t = await X.bingxTicker(base + '-USDT'); }
+      try { t = await X.binanceTicker(base + 'USDT'); } catch (e) {
+        try { t = await X.bingxTicker(base + '-USDT'); } catch (e2) { t = await X.bybitTicker(base + 'USDT'); }
+      }
       const c = await X.analyzeCoin(E, t);
       setExtra(x => [...x, c]); setSel(c);
-    } catch (e) { setErr(`Nie znalazłem ${base} na Binance ani BingX.`); }
+    } catch (e) { setErr(`Nie znalazłem ${base} na Binance, BingX ani Bybit (albo giełda blokuje połączenie z przeglądarki).`); }
     setBusy(false);
   };
 
@@ -317,7 +363,7 @@ export default function App() {
   if (sel) {
     return (
       <SafeAreaView style={s.root}><StatusBar barStyle="light-content" />
-        <Detail coin={sel} iv0={iv} onBack={() => setSel(null)} />
+        <Detail coin={sel} iv0={iv} mode0={mode} onBack={() => setSel(null)} />
       </SafeAreaView>
     );
   }
@@ -331,7 +377,7 @@ export default function App() {
       >
         <Text style={s.title}>TradingJam</Text>
         <Text style={s.small}>
-          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Skan'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX` : 'Binance + BingX'}
+          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Skan'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX (Bybit w wyszukiwarce)` : 'Binance + BingX'}
         </Text>
         {age > 3 && data && data.source === 'server' ? <Text style={[s.small, { color: C.warn }]}>Wyniki mają ponad {Math.floor(age)} godz. – sprawdź, czy skaner na GitHubie działa.</Text> : null}
         {status ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center' }}><ActivityIndicator color={C.accent} /><Text style={s.small}>{status}</Text></View> : null}
@@ -346,6 +392,9 @@ export default function App() {
           <Text style={s.label}>Horyzont prognozy</Text>
           <Chips items={HORIZONS} value={iv} onChange={setIv} />
           <Text style={s.small}>{HORIZON_INFO[iv]}</Text>
+          <Text style={s.label}>Rodzaj celu</Text>
+          <Chips items={MODES} value={mode} onChange={setMode} />
+          <Text style={s.small}>{MODE_INFO[mode]}</Text>
           <Text style={s.label}>Kierunek</Text>
           <Chips items={[['all', 'Long i Short'], ['long', '▲ Tylko LONG (wzrost)'], ['short', '▼ Tylko SHORT (spadek)']]} value={dir} onChange={setDir} />
           <Text style={s.label}>Kategoria</Text>
@@ -361,14 +410,14 @@ export default function App() {
               <TopRow key={row.coin.ex + row.coin.sym} rank={i + 1} row={row} horizonTxt={horizonTxt} onPress={() => setSel(row.coin)} />
             ))}
             <Text style={[s.small, { marginTop: 14 }]}>
-              Procent = szansa, że cena w ciągu {horizonTxt} najpierw dojdzie do celu (±2× ATR), a nie do poziomu w przeciwną stronę. Liczone osobno z historii każdego coina. Coiny, dla których model nie wykazał przewagi na historii, są na końcu listy. Nie jest to porada inwestycyjna.
+              Procent = szansa, że cena w ciągu {horizonTxt} najpierw dojdzie do celu, a nie do stopu. Liczone osobno z historii każdego coina. „✓ powyżej progu” = szansa wyższa niż próg opłacalności dla danego rodzaju celu. Coiny bez potwierdzonej przewagi są wyszarzone i na końcu listy. Nie jest to porada inwestycyjna.
             </Text>
           </View>
         ) : (
           <View>
             <TextInput value={q} onChangeText={setQ} placeholder="Szukaj coina, np. PEPE" placeholderTextColor={C.mute}
               autoCapitalize="characters" autoCorrect={false} style={s.input} />
-            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)']]} value={exF} onChange={setExF} />
+            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)'], ['bybit', 'Bybit']]} value={exF} onChange={setExF} />
             <Chips items={[['0', 'Każde %'], ['0.5', '≥ 50%'], ['0.6', '≥ 60%'], ['0.7', '≥ 70%']]} value={minP} onChange={setMinP} />
             <Chips items={[['p', 'Sortuj: prawdop.'], ['v', 'Wolumen'], ['c', 'Zmiana 24h']]} value={sortBy} onChange={setSortBy} />
             <Text style={[s.small, { marginVertical: 6 }]}>{filtered.length} coinów</Text>
@@ -376,14 +425,14 @@ export default function App() {
               <TouchableOpacity key={c.ex + c.sym} onPress={() => setSel(c)} style={s.row}>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{c.base}</Text><CatBadge coin={c} /><ExBadge ex={c.ex} />
+                    <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{c.base}</Text><CatBadge coin={c} /><ExBadges coin={c} />
                   </View>
                   <Text style={s.small}>{fmtPrice(c.price)} $ · <Text style={{ color: c.chg >= 0 ? C.up : C.down }}>{sgn(c.chg)}</Text> · {fmtVol(c.qv)}</Text>
                 </View>
                 {d ? (
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ color: a.weak ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
-                    <Text style={s.small}>{a.weak ? 'słaby model' : `cel ${sgn(d.movePct)}`}</Text>
+                    <Text style={{ color: d.weak ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
+                    <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.weak ? '⚠ brak przewagi' : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
                   </View>
                 ) : <Text style={s.small}>brak danych</Text>}
               </TouchableOpacity>
@@ -412,6 +461,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   page: { padding: 16, paddingTop: Platform.OS === 'android' ? 40 : 16, paddingBottom: 40 },
   title: { color: C.text, fontSize: 26, fontWeight: '800' },
+  box: { borderWidth: 1, borderRadius: 10, padding: 10, backgroundColor: C.card2 },
   label: { color: C.mute, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 10 },
   h2: { color: C.text, fontSize: 18, fontWeight: '800', marginTop: 12, marginBottom: 2 },
   h3: { color: C.text, fontWeight: '700', fontSize: 14, marginTop: 16, marginBottom: 8 },
