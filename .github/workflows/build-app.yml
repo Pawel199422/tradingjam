@@ -69,4 +69,9 @@ jobs:
 
       - name: Publikacja APK (zakładka Releases)
         env:
-          GH_TOKEN: ${{
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest tradingjam.apk \
+            --title "TradingJam – najnowsza wersja" \
+            --notes "APK na Androida. Zbudowano $(date -u '+%Y-%m-%d %H:%M') UTC."
