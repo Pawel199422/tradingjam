@@ -1,0 +1,38 @@
+name: Skan rynku
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: skan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Skanowanie Binance + BingX
+        run: node scanner/scanner.js
+
+      - name: Publikacja wyników (gałąź "data")
+        run: |
+          cd out
+          git init -q
+          git config user.name "skaner-bot"
+          git config user.email "skaner-bot@users.noreply.github.com"
+          git checkout -q -b data
+          git add results.json
+          git commit -q -m "Skan $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
