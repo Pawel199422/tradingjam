@@ -16,11 +16,53 @@ const CONF = {
   OUT: process.env.OUT || path.join(__dirname, '..', 'out', 'results.json'),
 };
 
+// Kategorie z CoinGecko (darmowe API). Kolejność = priorytet przy konflikcie.
+const CG_CATS = [
+  ['stock', ['tokenized-stock'], 1],
+  ['meme', ['meme-token'], 4],
+  ['ai', ['artificial-intelligence', 'ai-agents'], 3],
+  ['gaming', ['gaming'], 2],
+  ['rwa', ['real-world-assets-rwa'], 2],
+  ['depin', ['depin'], 2],
+  ['l2', ['layer-2'], 1],
+  ['l1', ['layer-1'], 1],
+  ['exchange', ['exchange-based-tokens'], 1],
+  ['defi', ['decentralized-finance-defi'], 3],
+];
+async function coingeckoCats(errors) {
+  const map = {}; let ok = 0;
+  if (process.env.NO_COINGECKO) return map;
+  for (const [key, ids, pages] of CG_CATS) for (const id of ids) for (let pg = 1; pg <= pages; pg++) {
+    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=${id}&per_page=250&page=${pg}`;
+    let rows = null;
+    for (let t = 0; t < 3; t++) {
+      try {
+        const r = await fetch(url, { headers: { accept: 'application/json' } });
+        if (r.status === 429) { await X.sleep(30000); continue; }
+        if (r.ok) rows = await r.json();
+        break;
+      } catch (e) { await X.sleep(5000); }
+    }
+    await X.sleep(7000); // limit darmowego API
+    if (!Array.isArray(rows)) break;
+    ok++;
+    for (const c of rows) { const sym = String(c.symbol || '').toUpperCase(); if (sym && !map[sym]) map[sym] = key; }
+    if (rows.length < 250) break;
+  }
+  console.log(`CoinGecko: ${ok} zapytań OK, ${Object.keys(map).length} symboli z kategorią`);
+  if (!ok) errors.push('CoinGecko: brak danych o kategoriach (użyto listy wbudowanej)');
+  return map;
+}
+
 async function main() {
   const t0 = Date.now(); const errors = [];
   let bn = [], bx = [];
   try { bn = await X.binanceTickers(); } catch (e) { errors.push('Binance tickery: ' + e.message); }
   try { bx = await X.bingxTickers(); } catch (e) { errors.push('BingX tickery: ' + e.message); }
+
+  const cg = await coingeckoCats(errors);
+  const notStock = t => E.catOf(t.base, cg) !== 'stock';
+  bn = bn.filter(notStock); bx = bx.filter(notStock);
 
   const binance = bn.filter(t => t.qv >= CONF.MIN_QV_BINANCE).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINANCE_TOP);
   const onBinance = new Set(bn.map(t => t.base));
@@ -35,6 +77,7 @@ async function main() {
       const t = universe[next++];
       try {
         const c = await X.analyzeCoin(E, t);
+        c.cat = E.catOf(t.base, cg);
         if (Object.values(c.res).some(a => !a.error)) coins.push(c);
       } catch (e) { errors.push(`${t.ex} ${t.sym}: ${e.message}`); }
       done++;
@@ -56,6 +99,8 @@ async function main() {
   fs.writeFileSync(CONF.OUT, JSON.stringify(out));
   console.log(`Zapisano ${coins.length} coinów → ${CONF.OUT} (${(fs.statSync(CONF.OUT).size / 1024).toFixed(0)} KB, ${out.durationMin} min)`);
   if (errors.length) console.log('Ostrzeżenia:\n  ' + errors.slice(0, 10).join('\n  '));
+  const catCount = {}; for (const c of coins) catCount[c.cat] = (catCount[c.cat] || 0) + 1;
+  console.log('Kategorie:', JSON.stringify(catCount));
   for (const iv of ['1h', '4h', '1d']) {
     console.log(`TOP 5 ${iv}: ` + E.rankTop(coins, iv, 'all', 5).map(r => `${r.coin.base} ${r.d.dir} ${(r.d.p * 100).toFixed(0)}%`).join(', '));
   }
