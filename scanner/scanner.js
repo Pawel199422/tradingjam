@@ -61,6 +61,8 @@ async function main() {
   try { bx = await X.bingxTickers(); } catch (e) { errors.push('BingX tickery: ' + e.message); }
 
   const cg = await coingeckoCats(errors);
+  let funding = {};
+  try { funding = await X.bingxFunding(); console.log(`Funding BingX: ${Object.keys(funding).length} kontraktów`); } catch (e) { errors.push('Funding BingX: ' + e.message); }
   const notStock = t => E.catOf(t.base, cg) !== 'stock';
   bn = bn.filter(notStock); bx = bx.filter(notStock);
 
@@ -79,6 +81,7 @@ async function main() {
       try {
         const c = await X.analyzeCoin(E, t);
         c.cat = E.catOf(t.base, cg);
+        { const f = funding[t.base] !== undefined ? funding[t.base] : funding[E.cleanBase(t.base)]; if (f !== undefined) c.funding = +f.toPrecision(4); }
         c.exs = [onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx'].filter(Boolean);
         if (Object.values(c.res).some(a => !a.error)) coins.push(c);
       } catch (e) { errors.push(`${t.ex} ${t.sym}: ${e.message}`); }

@@ -8,6 +8,10 @@ const CFG = {
   '4h': { label: '4h', H: 18, m: 2, horizonTxt: '3 dni' },
   '1d': { label: '1D', H: 14, m: 2, horizonTxt: '14 dni' },
 };
+// 14 dni ze świec 4h – dla coinów z krótką historią dzienną. 84 świece = 14 dni,
+// zmienność 4h × √6 ≈ zmienność dzienna, więc ruch skalujemy o 2,45.
+const ALT_CFG = { '1d4h': { label: '4h', H: 84, m: 2 * 2.45, horizonTxt: '14 dni', scale: 2.45 } };
+const MIN_DAILY = 200; // min. liczba świec dziennych dla zwykłej prognozy 14 dni
 const VALID_N = 1000;    // ile ostatnich sytuacji do testu skuteczności
 const REFIT_EVERY = 200; // co ile świec model jest douczany w teście
 // Tryb „Bezpieczny cel”: bliższy cel (1× ATR), dalszy stop (2× ATR) – wyższa szansa trafienia, gorszy stosunek zysku do ryzyka
@@ -168,7 +172,8 @@ function dirModel(Z, Y, labelled, cur, H) {
 }
 
 function analyze(k, iv) {
-  const { H, m, horizonTxt, label } = CFG[iv];
+  const cfg = CFG[iv] || ALT_CFG[iv];
+  const { H, m, horizonTxt, label } = cfg; const scale = cfg.scale || 1;
   const n = k.c.length; const cur = n - 2; // ostatnia ZAMKNIĘTA świeca
   const { F, raw } = buildFeatures(k);
   if (!F[cur]) return { error: 'Za mało danych' };
@@ -205,14 +210,16 @@ function analyze(k, iv) {
   const r = raw[cur]; const price = k.c[cur];
   // Tryb „Bezpieczny cel”: osobne modele dla LONG i SHORT
   const lab = YY => labelled.filter(i => YY[i] !== null);
-  const YL = outcomes(k, raw, H, SAFE.target, SAFE.stop);
-  const YS = outcomes(k, raw, H, SAFE.stop, SAFE.target).map(y => (y === null ? null : -y));
+  const tg = SAFE.target * scale, st = SAFE.stop * scale;
+  const YL = outcomes(k, raw, H, tg, st);
+  const YS = outcomes(k, raw, H, st, tg).map(y => (y === null ? null : -y));
   const safe = {
     long: dirModel(Z, YL, lab(YL), cur, H),
     short: dirModel(Z, YS, lab(YS), cur, H),
-    levels: { longT: price + SAFE.target * r.atr, longS: price - SAFE.stop * r.atr, shortT: price - SAFE.target * r.atr, shortS: price + SAFE.stop * r.atr },
+    levels: { longT: price + tg * r.atr, longS: price - st * r.atr, shortT: price - tg * r.atr, shortS: price + st * r.atr },
   };
   return {
+    src: ALT_CFG[iv] ? '4h' : null,
     safe,
     iv, label, horizonTxt, H, m, price,
     probs: { up: p[0], down: p[1], side: p[2] }, prior: { up: prior[0], down: prior[1], side: prior[2] },
@@ -221,22 +228,24 @@ function analyze(k, iv) {
   };
 }
 
+// Opis wykresu prostym językiem (dla początkujących)
 function reasons(r, est) {
   const out = [];
-  out.push(r.trend > 0.5 ? `Cena ${r.trend.toFixed(1)} ATR nad EMA50 – trend wzrostowy`
-    : r.trend < -0.5 ? `Cena ${Math.abs(r.trend).toFixed(1)} ATR pod EMA50 – trend spadkowy`
-      : 'Cena blisko EMA50 – brak wyraźnego trendu');
-  out.push(r.rsi > 70 ? `RSI ${r.rsi.toFixed(0)} – rynek wykupiony`
-    : r.rsi < 30 ? `RSI ${r.rsi.toFixed(0)} – rynek wyprzedany` : `RSI ${r.rsi.toFixed(0)} – neutralnie`);
-  out.push(`Wolumen ${r.volRatio.toFixed(1)}× średniej z 20 świec`
-    + (r.volRatio > 1.5 ? ' – wzmożona aktywność' : r.volRatio < 0.7 ? ' – mała aktywność' : ''));
+  out.push(r.trend > 0.5 ? `Trend wzrostowy – cena jest wyraźnie powyżej swojej średniej z ostatnich 50 świec`
+    : r.trend < -0.5 ? `Trend spadkowy – cena jest wyraźnie poniżej swojej średniej z ostatnich 50 świec`
+      : 'Brak wyraźnego trendu – cena kręci się wokół swojej średniej');
+  out.push(r.rsi > 70 ? `Rynek „przegrzany” (RSI ${r.rsi.toFixed(0)}) – po mocnych wzrostach często przychodzi korekta`
+    : r.rsi < 30 ? `Rynek „wyprzedany” (RSI ${r.rsi.toFixed(0)}) – po mocnych spadkach często przychodzi odbicie`
+      : `Siła ruchu neutralna (RSI ${r.rsi.toFixed(0)}) – ani przegrzany, ani wyprzedany`);
+  out.push(r.volRatio > 1.5 ? `Duże zainteresowanie – obroty ${r.volRatio.toFixed(1)}× wyższe niż zwykle`
+    : r.volRatio < 0.7 ? `Małe zainteresowanie – obroty tylko ${r.volRatio.toFixed(1)}× zwykłych`
+      : `Normalne obroty (${r.volRatio.toFixed(1)}× średniej)`);
   const bp = r.buy * 100;
-  out.push(`Kupujący${est ? ' (szac.)' : ''}: ${bp.toFixed(0)}% wolumenu (6 świec) – `
-    + (bp > 53 ? 'przewaga presji kupna' : bp < 47 ? 'przewaga presji sprzedaży' : 'równowaga'));
-  out.push(`Delta wolumenu${est ? ' (szac.)' : ''} (CVD, 12 świec): ${(r.cvd * 100).toFixed(0)}% – `
-    + (r.cvd > 0.05 ? 'agresywni kupujący' : r.cvd < -0.05 ? 'agresywni sprzedający' : 'bez przewagi'));
-  out.push(`Pozycja w zakresie 20 świec: ${(r.range * 100).toFixed(0)}%`
-    + (r.range > 0.85 ? ' – przy szczycie' : r.range < 0.15 ? ' – przy dołku' : ''));
+  out.push((bp > 53 ? `Przewagę mają kupujący` : bp < 47 ? `Przewagę mają sprzedający` : `Kupujący i sprzedający w równowadze`)
+    + ` – ${bp.toFixed(0)}% ostatnich transakcji to zakupy${est ? ' (szacunek)' : ''}`);
+  out.push(r.range > 0.85 ? `Cena przy szczycie z ostatnich 20 świec`
+    : r.range < 0.15 ? `Cena przy dołku z ostatnich 20 świec`
+      : `Cena w środku zakresu z ostatnich 20 świec (${(r.range * 100).toFixed(0)}% drogi od dołka do szczytu)`);
   return out;
 }
 
@@ -248,7 +257,7 @@ function compact(a) {
   if (!a || a.error) return { error: a ? a.error : 'Brak danych' };
   const R = a.raw;
   return {
-    label: a.label, horizonTxt: a.horizonTxt, m: a.m, price: sig(a.price),
+    label: a.label, horizonTxt: a.horizonTxt, m: r4(a.m), price: sig(a.price), src: a.src || null,
     probs: { up: r4(a.probs.up), down: r4(a.probs.down), side: r4(a.probs.side) },
     prior: { up: r4(a.prior.up), down: r4(a.prior.down), side: r4(a.prior.side) },
     edge: r4(a.edge), signal: a.signal, weak: a.weak, skill: r4(a.skill),
@@ -286,6 +295,25 @@ function dirOf(a, mode = 'equal', side = null) {
 }
 
 // TOP N: najwyższe prawdopodobieństwo; scenariusze bez potwierdzonej przewagi idą na koniec
+// Ekstremalny ruch w 24h – historia coina słabo opisuje taką sytuację
+const EXTREME_PCT = 40;
+const isExtreme = c => Math.abs(c.chg || 0) >= EXTREME_PCT;
+// Powód braku zaufania: 'short' = za krótka historia do testu, 'noedge' = test nie wykazał przewagi
+const weakWhy = d => (!d || !d.weak ? null : d.skill === null || d.skill === undefined ? 'short' : 'noedge');
+
+// Opis statystyczny (neutralny – bez poleceń kupna/sprzedaży): { level, text }
+function verdict(d, coin) {
+  if (!d) return { level: 'none', text: 'Brak danych.' };
+  const be = d.mode === 'safe' ? BREAK_EVEN : 0.5;
+  const pc = Math.round(d.p * 100), bc = Math.round(be * 100);
+  if (isExtreme(coin)) return { level: 'avoid', text: 'Ekstremalna zmienność – cena zmieniła się o 40% lub więcej w 24h. Historia coina nie opisuje takiej sytuacji, statystyka jest tu niewiarygodna.' };
+  if (weakWhy(d) === 'short') return { level: 'none', text: 'Za mało danych – historia coina jest zbyt krótka, by zweryfikować model.' };
+  if (weakWhy(d) === 'noedge') return { level: 'none', text: 'Brak przewagi statystycznej – w teście na historii model nie był trafniejszy niż zwykła średnia.' };
+  if (d.p > be + 0.02) return { level: 'go', text: `Statystycznie: przewaga scenariusza ${d.dir} – ${pc}% przy progu opłacalności ${bc}%.` };
+  if (d.p >= be - 0.005) return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – na granicy progu opłacalności ${bc}% (za mały zapas, by mówić o przewadze).` };
+  return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – poniżej progu opłacalności ${bc}%.` };
+}
+
 function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
   const rows = [];
   for (const c of coins) {
@@ -293,7 +321,8 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
     const d = dirOf(a, mode, dir === 'all' ? null : dir); if (!d || d.p === null) continue;
     rows.push({ coin: c, a, d });
   }
-  rows.sort((x, y) => (x.d.weak - y.d.weak) || (y.d.p - x.d.p));
+  const bad = r => (r.d.weak || isExtreme(r.coin) ? 1 : 0);
+  rows.sort((x, y) => (bad(x) - bad(y)) || (y.d.p - x.d.p));
   return rows.slice(0, n);
 }
 
@@ -331,4 +360,4 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+module.exports = { verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };

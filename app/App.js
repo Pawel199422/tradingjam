@@ -99,27 +99,48 @@ const MODE_INFO = {
 const breakEven = d => (d.mode === 'safe' ? E.BREAK_EVEN : 0.5);
 const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
 
-// Wyjaśnienie, co znaczy „brak przewagi”
-function WeakNote({ coin }) {
+// Ostrzeżenia: 'short' = za krótka historia do testu, 'noedge' = test nie wykazał przewagi
+const WHY = {
+  short: {
+    title: '⚠ Za krótka historia – nie da się sprawdzić modelu',
+    text: c => `${c.base} jest na giełdzie zbyt krótko, żeby przetestować model na jego przeszłości. Procent opiera się na niewielu podobnych sytuacjach, więc traktuj go tylko jako luźną wskazówkę.`,
+  },
+  noedge: {
+    title: '⚠ Brak przewagi – nie sugeruj się tym procentem',
+    text: c => `Sprawdziliśmy model na ostatnich ~1000 świecach ${c.base}, których nie widział podczas nauki. Jego prognozy nie były trafniejsze niż zwykła statystyka (jak często ${c.base} w ogóle robi taki ruch). Dla tego coina i horyzontu wykres po prostu niewiele mówi o przyszłości – tak bywa zwłaszcza przy dużych, płynnych coinach.`,
+  },
+};
+const weakShort = why => (why === 'short' ? '⚠ za krótka historia' : '⚠ brak przewagi');
+function WeakNote({ coin, why, sides }) {
+  const [open, setOpen] = useState(false);
+  if (!why) return null;
+  const w = WHY[why];
   return (
     <View style={[s.box, { borderColor: C.warn, marginTop: 8 }]}>
-      <Text style={{ color: C.warn, fontWeight: '800' }}>⚠ Brak przewagi – nie sugeruj się tym procentem</Text>
-      <Text style={[s.li, { marginTop: 4 }]}>
-        Sprawdziliśmy ten model na ostatnich ~1000 świecach {coin.base}, których nie widział podczas nauki. Jego prognozy nie były trafniejsze niż zwykła statystyka, czyli to, jak często {coin.base} w ogóle robi taki ruch. Procent może więc być przypadkowy. Dla tego coina wykres po prostu niewiele mówi o przyszłości.
-      </Text>
+      <Text style={{ color: C.warn, fontWeight: '800' }}>{w.title}{sides ? ` (${sides})` : ''}</Text>
+      {open ? <Text style={[s.li, { marginTop: 4 }]}>{w.text(coin)}</Text> : null}
+      <TouchableOpacity onPress={() => setOpen(!open)}><Text style={{ color: C.accent, marginTop: 4, fontSize: 12 }}>{open ? 'Zwiń' : 'Dlaczego?'}</Text></TouchableOpacity>
     </View>
   );
 }
+const ExtremeBadge = ({ coin }) => (E.isExtreme(coin) ? (
+  <View style={[s.badge, { borderColor: C.warn, backgroundColor: C.warn + '22' }]}>
+    <Text style={{ color: C.warn, fontSize: 10, fontWeight: '800' }}>⚡ {sgn(coin.chg)} / 24h</Text>
+  </View>
+) : null);
 
 function Legend() {
   const [open, setOpen] = useState(false);
   const items = [
     ['LONG 72%', 'szansa 72%, że cena najpierw dojdzie do celu w górę, zanim dojdzie do stopu w dół. SHORT – odwrotnie.'],
-    ['Bezpieczny cel', 'cel blisko, stop 2× dalej. Daje wysokie procenty (60–80%), ale żeby zarabiać, trzeba trafiać częściej niż 67%. Zielone „✓ powyżej progu” = model przekracza ten próg.'],
+    ['Bezpieczny cel', 'cel blisko, stop 2× dalej. Daje wysokie procenty (60–80%), ale próg opłacalności to 67%. Zielone „✓ powyżej progu” = statystyka historyczna przekracza ten próg.'],
     ['Równy cel', 'cel i stop w tej samej odległości. Procenty niższe (45–60%), ale opłacalne już powyżej 50%.'],
     ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
     ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
     ['brak przewagi', 'w teście na historii model nie był lepszy niż zwykła statystyka – procent może być przypadkowy. Takie coiny są wyszarzone i na końcu listy.'],
+    ['za krótka historia', 'coin jest za młody, żeby sprawdzić model. Procent to tylko luźna wskazówka.'],
+    ['⚡ ekstremalny ruch', 'cena zmieniła się o 40% lub więcej w 24h (pump/dump). Historia słabo opisuje takie sytuacje – ryzyko jest bardzo wysokie.'],
+    ['Funding', 'opłata między longami i shortami na kontraktach. Dodatni = więcej chętnych na long (longi płacą), ujemny = przewaga shortów.'],
     ['24 godz. / 3 dni / 14 dni', 'w jakim czasie ma się wydarzyć scenariusz.'],
     ['Kategoria', 'typ projektu: Memecoin, AI, Layer 1/2, DeFi, Gaming, RWA, DePIN, Token giełdy.'],
     ['Giełdy', 'pierwsza plakietka = giełda, z której liczona jest analiza; wyblakłe = coin jest też tam.'],
@@ -163,17 +184,81 @@ function ProbBar({ label, p, color, sub }) {
   );
 }
 
+// ---------- Werdykt, kalkulator, poradnik ----------
+const VCOL = { go: C.up, weak: C.warn, none: C.mute, avoid: C.down };
+const VICON = { go: '▲▼', weak: '·', none: '·', avoid: '⚡' };
+function VerdictBox({ d, coin, compact }) {
+  const v = E.verdict(d, coin);
+  if (compact) return <Text style={[s.meta, { color: VCOL[v.level], marginTop: 4 }]}>{v.text}</Text>;
+  return (
+    <View style={[s.box, { borderColor: VCOL[v.level], marginTop: 10 }]}>
+      <Text style={{ color: C.mute, fontSize: 11, fontWeight: '700' }}>PODSUMOWANIE STATYSTYKI</Text>
+      <Text style={{ color: VCOL[v.level], fontWeight: '800', fontSize: 15, marginTop: 4 }}>{v.text}</Text>
+      <Text style={[s.small, { marginTop: 4 }]}>Opis statystyczny, nie rekomendacja. Decyzja i ryzyko należą wyłącznie do Ciebie.</Text>
+    </View>
+  );
+}
+
+// Przykład edukacyjny zarządzania ryzykiem – stałe liczby, bez danych użytkownika
+function RiskExample({ d }) {
+  const c = 1000, r = 1;
+  const stop = Math.abs(d.stopPct) / 100, move = Math.abs(d.movePct) / 100;
+  const loss = c * r / 100, size = stop > 0 ? loss / stop : 0, gain = size * move;
+  return (
+    <View style={s.card}>
+      <Text style={s.h3}>📚 Przykład edukacyjny: jak działa zarządzanie ryzykiem</Text>
+      <Text style={s.li}>Załóżmy przykładowy kapitał <Text style={{ fontWeight: '800' }}>1000 USDT</Text> i zasadę ryzykowania <Text style={{ fontWeight: '800' }}>1%</Text> kapitału na jedną transakcję. Przy odległości stopu {Math.abs(d.stopPct).toFixed(1)}%:</Text>
+      <Text style={s.li}>• wielkość pozycji w tym przykładzie: {size.toFixed(0)} USDT</Text>
+      <Text style={s.li}>• strata przy stopie: <Text style={{ color: C.down }}>−{loss.toFixed(2)} USDT</Text> (1% kapitału)</Text>
+      <Text style={s.li}>• zysk przy celu: <Text style={{ color: C.up }}>+{gain.toFixed(2)} USDT</Text></Text>
+      <Text style={s.small}>To ilustracja zasady liczenia ryzyka, a nie propozycja transakcji ani wielkości pozycji dla Ciebie.</Text>
+    </View>
+  );
+}
+
+const GUIDE = [
+  ['Co robi TradingJam?', 'To narzędzie statystyczne i edukacyjne. Co godzinę analizuje wykresy ok. 200 kryptowalut z Binance i BingX i pokazuje, jak w przeszłości kończyły się podobne sytuacje na wykresie – czyli jak często cena szła w górę (LONG) albo w dół (SHORT). Te same wyniki widzi każdy użytkownik; nie są dopasowane do niczyjej sytuacji.'],
+  ['LONG i SHORT', 'LONG = zarabiasz, gdy cena rośnie. SHORT = zarabiasz, gdy cena spada (dostępne na kontraktach, np. na BingX czy Binance Futures).'],
+  ['Co znaczy „LONG 72%”?', 'Że w podobnych sytuacjach w przeszłości cena w 72 przypadkach na 100 najpierw doszła do celu, a dopiero potem (albo wcale) do stopu. To NIE jest gwarancja – w 28 przypadkach na 100 będzie strata.'],
+  ['Cel i stop', 'Cel (take profit) – poziom ceny zamknięcia z zyskiem. Stop (stop loss) – poziom zamknięcia ze stratą, który ogranicza dalsze straty. W statystyce aplikacji oba poziomy są liczone automatycznie ze zmienności coina, żeby porównywać scenariusze w jednakowy sposób.'],
+  ['Bezpieczny czy Równy cel?', 'Bezpieczny: cel blisko, stop dalej – częściej wygrywasz, ale wygrane są mniejsze niż przegrane. Opłaca się dopiero przy szansie powyżej 67%. Równy: cel i stop w tej samej odległości – wygrane i przegrane są równe, opłaca się powyżej 50%.'],
+  ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (67% dla celu bezpiecznego, 50% dla równego). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
+  ['„Brak przewagi” i „za krótka historia”', 'Zanim pokażemy procent, sprawdzamy model na przeszłości tego coina. Jeśli nie był trafniejszy niż zwykła statystyka – „brak przewagi”. Jeśli coin jest za młody, żeby to sprawdzić – „za krótka historia”. W obu przypadkach procent ma bardzo niską wiarygodność.'],
+  ['⚡ Ekstremalny ruch', 'Coin zmienił cenę o 40% lub więcej w 24h (gwałtowny wzrost lub spadek). W takich sytuacjach historia słabo opisuje to, co się dzieje, więc statystyka jest niewiarygodna, a zmienność i ryzyko – wyjątkowo wysokie.'],
+  ['Horyzonty', '24 godz. – krótki trading, szybkie ruchy, więcej przypadkowości. 3 dni – swing, dobry kompromis. 14 dni – dłuższe pozycje, większe ruchy w procentach.'],
+  ['Kategorie', 'Memecoin – coiny „dla zabawy”, bardzo zmienne. AI – projekty sztucznej inteligencji. Layer 1/2 – blockchainy (np. ETH, SOL). DeFi – finanse zdecentralizowane. Gaming, RWA (realne aktywa), DePIN (infrastruktura), Token giełdy.'],
+  ['Funding', 'Opłata na kontraktach między graczami. Dodatni = dużo osób gra na wzrost (tłok na longach), ujemny = przewaga shortów. Bardzo wysoki funding bywa sygnałem, że rynek jest przegrzany.'],
+  ['Zarządzanie ryzykiem – podstawy (edukacyjnie)', 'Powszechnie opisywane w literaturze zasady: ograniczanie straty na jednej transakcji do niewielkiego procentu kapitału (często podaje się 1–2%), stosowanie zleceń stop loss, ostrożność z dźwignią (zwielokrotnia zarówno zyski, jak i straty) oraz świadomość, że każda strategia ma serie strat. To wiedza ogólna, a nie zalecenie dla Ciebie.'],
+  ['Czego aplikacja NIE robi', 'Nie zna przyszłości i nie gwarantuje zysku. Nie uwzględnia wiadomości, ogłoszeń ani manipulacji. Nie zna Twojej sytuacji finansowej, celów ani doświadczenia i nie wskazuje, co powinieneś kupić lub sprzedać. Pokazuje statystykę z przeszłości – decyzja i ryzyko są zawsze po Twojej stronie.'],
+  ['Zastrzeżenia prawne', 'Treści w aplikacji mają charakter wyłącznie informacyjny i edukacyjny. Nie stanowią porady inwestycyjnej, doradztwa w zakresie kryptoaktywów, rekomendacji inwestycyjnej ani oferty w rozumieniu przepisów prawa, w tym rozporządzeń MiCA i MAR. Nie są spersonalizowane. Wyniki historyczne nie gwarantują przyszłych wyników. Handel kryptoaktywami, zwłaszcza z dźwignią, wiąże się z wysokim ryzykiem utraty całości zainwestowanych środków. Przed podjęciem decyzji rozważ skorzystanie z porady licencjonowanego doradcy.'],
+];
+function Guide() {
+  const [open, setOpen] = useState(0);
+  return (
+    <View>
+      <Text style={s.h2}>📘 Poradnik – zacznij tutaj</Text>
+      <Text style={s.small}>Wszystko, co musisz wiedzieć, w 2 minuty. Kliknij temat, żeby go rozwinąć.</Text>
+      {GUIDE.map(([t, body], i) => (
+        <TouchableOpacity key={t} onPress={() => setOpen(open === i ? -1 : i)} style={s.card}>
+          <Text style={{ color: C.text, fontWeight: '800' }}>{open === i ? '▾' : '▸'} {t}</Text>
+          {open === i ? <Text style={[s.li, { marginTop: 6 }]}>{body}</Text> : null}
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 // ---------- Wiersz TOP 10 ----------
 function TopRow({ rank, row, horizonTxt, onPress }) {
   const { coin, d } = row;
-  const col = d.weak ? C.mute : dirColor(d.dir);
+  const col = d.weak || E.isExtreme(coin) ? C.mute : dirColor(d.dir);
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[s.card, d.weak && { opacity: 0.75 }]}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[s.card, (d.weak || E.isExtreme(coin)) && { opacity: 0.75 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={s.rank}>{rank}</Text>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Text style={s.sym}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} />
+            <Text style={s.sym}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} /><ExtremeBadge coin={coin} />
           </View>
           <Text style={s.small}>{fmtPrice(coin.price)} $ · 24h <Text style={{ color: coin.chg >= 0 ? C.up : C.down }}>{sgn(coin.chg)}</Text></Text>
         </View>
@@ -187,10 +272,11 @@ function TopRow({ rank, row, horizonTxt, onPress }) {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
         <Text style={s.meta}>normalnie {pct0(d.hist)}{d.hiHit !== null && d.hiN >= 20 ? ` · trafność ${pct0(d.hiHit)}` : ''}</Text>
         {d.weak
-          ? <Text style={[s.meta, { color: C.warn }]}>⚠ brak przewagi</Text>
+          ? <Text style={[s.meta, { color: C.warn }]}>{weakShort(E.weakWhy(d))}</Text>
           : aboveBE(d) ? <Text style={[s.meta, { color: C.up }]}>✓ powyżej progu {pct0(breakEven(d))}</Text>
-            : <Text style={s.meta}>poniżej progu {pct0(breakEven(d))}</Text>}
+            : <Text style={s.meta}>{d.p >= breakEven(d) - 0.005 ? 'na granicy progu' : 'poniżej progu'} {pct0(breakEven(d))}</Text>}
       </View>
+      <VerdictBox d={d} coin={coin} compact />
     </TouchableOpacity>
   );
 }
@@ -210,7 +296,7 @@ function ScenarioCard({ coin, d, horizonTxt }) {
       {d.hiHit !== null && d.hiN >= 20
         ? <Text style={s.small}>Test na historii: gdy model dawał {d.mode === 'safe' ? '≥65%' : 'mocny sygnał'}, trafiał w {pct1(d.hiHit)} przypadków ({d.hiN} razy w ostatnich {d.nVal} świecach).</Text>
         : null}
-      {d.weak ? <WeakNote coin={coin} /> : null}
+      {d.weak ? <Text style={[s.small, { color: C.warn }]}>{weakShort(E.weakWhy(d))}</Text> : null}
     </View>
   );
 }
@@ -225,9 +311,18 @@ function Detail({ coin, iv0, mode0, onBack }) {
     <ScrollView contentContainerStyle={s.page}>
       <TouchableOpacity onPress={onBack} style={{ marginBottom: 10 }}><Text style={{ color: C.accent, fontSize: 16 }}>‹ Wróć</Text></TouchableOpacity>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Text style={s.title}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} />
+        <Text style={s.title}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} /><ExtremeBadge coin={coin} />
       </View>
       <Text style={s.small}>{fmtPrice(coin.price)} $ · 24h <Text style={{ color: coin.chg >= 0 ? C.up : C.down }}>{sgn(coin.chg)}</Text> · wol. {fmtVol(coin.qv)}</Text>
+      {coin.funding !== undefined && coin.funding !== null ? (
+        <Text style={s.small}>Funding (BingX): {(coin.funding * 100).toFixed(4)}% – {coin.funding > 0.0001 ? 'przewaga longów (longi płacą shortom)' : coin.funding < -0.0001 ? 'przewaga shortów (shorty płacą longom)' : 'równowaga'}</Text>
+      ) : null}
+      {E.isExtreme(coin) ? (
+        <View style={[s.box, { borderColor: C.warn, marginTop: 8 }]}>
+          <Text style={{ color: C.warn, fontWeight: '800' }}>⚡ Ekstremalny ruch: {sgn(coin.chg)} w 24h</Text>
+          <Text style={[s.small, { color: C.text }]}>Przy takim pumpie/dumpie historia coina słabo opisuje sytuację. Procenty poniżej traktuj bardzo ostrożnie – ryzyko jest wyjątkowo wysokie.</Text>
+        </View>
+      ) : null}
       {(coin.exs || []).length > 1 ? <Text style={s.small}>Dostępny na: {coin.exs.map(e => (EX[e] || [e])[0]).join(', ')} · analiza z {(EX[coin.ex] || [coin.ex])[0]}</Text> : null}
       <View style={{ marginVertical: 12 }}><Sparkline data={coin.spark} h={48} /></View>
       <Text style={s.label}>Horyzont</Text>
@@ -240,6 +335,14 @@ function Detail({ coin, iv0, mode0, onBack }) {
       {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? a.error : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
         <View>
           <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
+          {a.src === '4h' ? <Text style={s.small}>{coin.base} ma za krótką historię dzienną, więc prognoza 14 dni jest liczona ze świec 4-godzinnych.</Text> : null}
+          <VerdictBox d={E.dirOf(a, mode)} coin={coin} />
+          {(() => {
+            const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
+            const wl = E.weakWhy(L), ws = E.weakWhy(S);
+            return wl && wl === ws ? <WeakNote coin={coin} why={wl} />
+              : <>{wl ? <WeakNote coin={coin} why={wl} sides="LONG" /> : null}{ws ? <WeakNote coin={coin} why={ws} sides="SHORT" /> : null}</>;
+          })()}
           {(() => {
             const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
             const first = L.weak === S.weak ? (L.p >= S.p ? 'L' : 'S') : (L.weak ? 'S' : 'L');
@@ -250,19 +353,44 @@ function Detail({ coin, iv0, mode0, onBack }) {
             <ProbBar label="Konsolidacja (żaden poziom)" p={a.probs.side} color={C.side} sub={`historycznie ${pct0(a.prior.side)}`} />
           ) : null}
 
+          <RiskExample d={E.dirOf(a, mode)} />
+
           <Text style={s.h3}>Jak wygląda wykres ({a.label})</Text>
           {E.reasons(a.raw, coin.est).map((t, i) => <Text key={i} style={s.li}>• {t}</Text>)}
           {coin.est ? <Text style={s.small}>Ta giełda nie udostępnia wolumenu kupujących – presja jest szacowana z położenia zamknięcia w świecy.</Text> : null}
           <Text style={s.small}>Model wytrenowany na {a.nTrain} świecach {coin.base} ({a.label}), osobno dla każdego coina, interwału i kierunku.</Text>
         </View>
       )}
-      <Text style={[s.small, { marginTop: 20 }]}>Procent = szansa, że cena w podanym czasie najpierw dojdzie do celu, a nie do stopu. Liczone z tego, jak kończyły się podobne układy wykresu w historii coina. Nie jest to porada inwestycyjna.</Text>
+      <Text style={[s.small, { marginTop: 20 }]}>Procent = szansa, że cena w podanym czasie najpierw dojdzie do celu, a nie do stopu. Liczone z tego, jak kończyły się podobne układy wykresu w historii coina. Treść informacyjna i edukacyjna – nie stanowi porady inwestycyjnej, rekomendacji ani oferty. Wyniki historyczne nie gwarantują przyszłych wyników.</Text>
     </ScrollView>
   );
 }
 
 // ---------- Aplikacja ----------
+function Consent({ onAccept }) {
+  return (
+    <SafeAreaView style={s.root}>
+      <ScrollView contentContainerStyle={s.page}>
+        <Text style={s.title}>Zanim zaczniesz</Text>
+        <Text style={[s.li, { marginTop: 12 }]}>TradingJam to narzędzie <Text style={{ fontWeight: '800' }}>statystyczne i edukacyjne</Text>. Pokazuje, jak w przeszłości kończyły się podobne układy wykresów kryptowalut.</Text>
+        <Text style={s.li}>• To <Text style={{ fontWeight: '800' }}>nie jest</Text> porada inwestycyjna, doradztwo ani rekomendacja kupna czy sprzedaży.</Text>
+        <Text style={s.li}>• Wyniki są takie same dla wszystkich i nie uwzględniają Twojej sytuacji finansowej.</Text>
+        <Text style={s.li}>• Wyniki historyczne nie gwarantują przyszłych wyników.</Text>
+        <Text style={s.li}>• Handel kryptoaktywami wiąże się z wysokim ryzykiem utraty całości środków.</Text>
+        <Text style={s.li}>• Wszystkie decyzje podejmujesz samodzielnie i na własną odpowiedzialność.</Text>
+        <TouchableOpacity onPress={onAccept} style={[s.btn, { marginTop: 20 }]}>
+          <Text style={s.btnT}>Rozumiem i akceptuję</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+const CONSENT_KEY = 'tj_consent_v1';
+const readConsent = () => { try { return typeof localStorage !== 'undefined' && localStorage.getItem(CONSENT_KEY) === '1'; } catch (e) { return false; } };
+const saveConsent = () => { try { if (typeof localStorage !== 'undefined') localStorage.setItem(CONSENT_KEY, '1'); } catch (e) { } };
+
 export default function App() {
+  const [consent, setConsent] = useState(readConsent());
   const [data, setData] = useState(null);        // { generatedAt, coins, source }
   const [extra, setExtra] = useState([]);        // coiny przeanalizowane na żądanie
   const [status, setStatus] = useState('');      // komunikat ładowania
@@ -360,6 +488,8 @@ export default function App() {
 
   const age = data && data.generatedAt ? (Date.now() - new Date(data.generatedAt)) / 36e5 : 0;
 
+  if (!consent) return <Consent onAccept={() => { saveConsent(); setConsent(true); }} />;
+
   if (sel) {
     return (
       <SafeAreaView style={s.root}><StatusBar barStyle="light-content" />
@@ -388,6 +518,13 @@ export default function App() {
           </View>
         ) : null}
 
+        {tab !== 'guide' ? (
+          <TouchableOpacity onPress={() => setTab('guide')} style={[s.box, { borderColor: C.accent, marginTop: 10 }]}>
+            <Text style={{ color: C.accent, fontWeight: '800' }}>📘 Pierwszy raz? Przeczytaj Poradnik (2 min)</Text>
+            <Text style={s.small}>Dowiesz się, co znaczą procenty, cel, stop i próg opłacalności oraz jak czytać wyniki.</Text>
+          </TouchableOpacity>
+        ) : null}
+        {tab === 'guide' ? <Guide /> : <>
         <View style={{ marginTop: 12 }}>
           <Text style={s.label}>Horyzont prognozy</Text>
           <Chips items={HORIZONS} value={iv} onChange={setIv} />
@@ -410,7 +547,7 @@ export default function App() {
               <TopRow key={row.coin.ex + row.coin.sym} rank={i + 1} row={row} horizonTxt={horizonTxt} onPress={() => setSel(row.coin)} />
             ))}
             <Text style={[s.small, { marginTop: 14 }]}>
-              Procent = szansa, że cena w ciągu {horizonTxt} najpierw dojdzie do celu, a nie do stopu. Liczone osobno z historii każdego coina. „✓ powyżej progu” = szansa wyższa niż próg opłacalności dla danego rodzaju celu. Coiny bez potwierdzonej przewagi są wyszarzone i na końcu listy. Nie jest to porada inwestycyjna.
+              Procent = szansa, że cena w ciągu {horizonTxt} najpierw dojdzie do celu, a nie do stopu. Liczone osobno z historii każdego coina. „✓ powyżej progu” = szansa wyższa niż próg opłacalności dla danego rodzaju celu. Coiny bez potwierdzonej przewagi, z za krótką historią albo po ekstremalnym ruchu (⚡) są wyszarzone i na końcu listy. Treści mają charakter wyłącznie informacyjny i edukacyjny – nie stanowią porady inwestycyjnej ani rekomendacji. Wyniki historyczne nie gwarantują przyszłych wyników.
             </Text>
           </View>
         ) : (
@@ -425,14 +562,14 @@ export default function App() {
               <TouchableOpacity key={c.ex + c.sym} onPress={() => setSel(c)} style={s.row}>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{c.base}</Text><CatBadge coin={c} /><ExBadges coin={c} />
+                    <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{c.base}</Text><CatBadge coin={c} /><ExBadges coin={c} /><ExtremeBadge coin={c} />
                   </View>
                   <Text style={s.small}>{fmtPrice(c.price)} $ · <Text style={{ color: c.chg >= 0 ? C.up : C.down }}>{sgn(c.chg)}</Text> · {fmtVol(c.qv)}</Text>
                 </View>
                 {d ? (
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={{ color: d.weak ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
-                    <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.weak ? '⚠ brak przewagi' : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
+                    <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.weak ? weakShort(E.weakWhy(d)) : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
                   </View>
                 ) : <Text style={s.small}>brak danych</Text>}
               </TouchableOpacity>
@@ -444,10 +581,11 @@ export default function App() {
             ) : null}
           </View>
         )}
+        </>}
       </ScrollView>
 
       <View style={s.tabbar}>
-        {[['top', 'TOP 10'], ['all', 'Wszystkie coiny']].map(([k, t]) => (
+        {[['top', 'TOP 10'], ['all', 'Wszystkie coiny'], ['guide', 'Poradnik']].map(([k, t]) => (
           <TouchableOpacity key={k} onPress={() => setTab(k)} style={s.tabBtn}>
             <Text style={{ color: tab === k ? C.accent : C.mute, fontWeight: '700' }}>{t}</Text>
           </TouchableOpacity>

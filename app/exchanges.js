@@ -154,22 +154,39 @@ async function bybitKlines(sym, iv, total) {
   return k;
 }
 
+// Funding (BingX perpetual) – wszystkie kontrakty jednym zapytaniem
+async function bingxFunding() {
+  const d = await bingxGet('/openApi/swap/v2/quote/premiumIndex');
+  const out = {};
+  for (const t of Array.isArray(d) ? d : []) {
+    const f = num(t.lastFundingRate);
+    if (t.symbol && isFinite(f)) out[t.symbol.replace(/-USDT$/, '')] = f;
+  }
+  return out;
+}
+
 // ---------- Wspólne ----------
 const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : ex === 'bybit' ? bybitKlines(sym, iv, total) : binanceKlines(sym, iv, total));
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
 async function analyzeCoin(E, ticker, onProgress) {
-  const res = {}; let spark = [];
+  const res = {}; let spark = []; let k4h = null;
   for (const iv of Object.keys(E.CFG)) {
     try {
       const k = await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
       if (iv === '1h') spark = k.c.slice(-48).map(x => +x.toPrecision(6));
+      if (iv === '4h') k4h = k;
       await sleep(0);
-      res[iv] = k.c.length < 200 ? { error: 'Za krótka historia coina' } : E.compact(E.analyze(k, iv));
+      if (iv === '1d' && k.c.length < E.MIN_DAILY && k4h && k4h.c.length >= 300) {
+        // młody coin: prognoza 14 dni liczona ze świec 4h
+        res[iv] = E.compact(E.analyze(k4h, '1d4h'));
+      } else {
+        res[iv] = k.c.length < 200 ? { error: `Za krótka historia coina (${k.c.length} świec, potrzeba min. 200)` } : E.compact(E.analyze(k, iv));
+      }
     } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; }
     if (onProgress) onProgress(iv);
   }
   return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
 }
 
-module.exports = { bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
+module.exports = { bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
