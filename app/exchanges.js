@@ -245,8 +245,8 @@ const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv,
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
 async function analyzeCoin(E, ticker, onProgress) {
-  const res = {}; let spark = []; let k4h = null; let err4h = null; let ageDays = null; let k1d = null; let err1d = null;
-  const NEED_DAYS = { '1h': 9, '4h': 34, '1d': 50, '30d': 80 }; // ile dni historii potrzeba na dany horyzont
+  const res = {}; let spark = []; let k1h = null; let k4h = null; let err4h = null; let ageDays = null; let k1d = null; let err1d = null;
+  const NEED_DAYS = { '1h': 9, '4h': 16, '1d': 50, '30d': 80 }; // ile dni historii potrzeba na dany horyzont
   const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni', '30d': '30 dni' };
   const tooYoung = iv => ({ error: `Za młody coin: ${ticker.base} jest na giełdzie od ok. ${ageDays} dni. Na prognozę na ${HZ[iv]} potrzeba min. ok. ${NEED_DAYS[iv]} dni historii – statystyka pojawi się, gdy coin będzie starszy.`, young: true });
   for (const iv of Object.keys(E.CFG)) {
@@ -264,12 +264,16 @@ async function analyzeCoin(E, ticker, onProgress) {
     try {
       const k = await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
       if (iv === '1d') k1d = k;
+      if (iv === '1h') k1h = k;
       if (iv === '1h') { spark = k.c.slice(-48).map(x => +x.toPrecision(6)); if (k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5)); }
       if (iv === '4h') k4h = k;
       await sleep(0);
       if (iv === '1d' && k.c.length < E.MIN_DAILY && k4h && k4h.c.length >= 300) {
         // młody coin: prognoza 14 dni liczona ze świec 4h
         res[iv] = E.compact(E.analyze(k4h, '1d4h'));
+      } else if (iv === '4h' && k.c.length < 200 && k1h && k1h.c.length >= 300 + 72) {
+        // młody coin: prognoza 3 dni liczona ze świec 1h
+        res[iv] = E.compact(E.analyze(k1h, '4h1h'));
       } else if (iv === '1d' && k.c.length < E.MIN_DAILY && err4h) {
         res[iv] = { error: err4h }; // brak świec 4h przez chwilowy błąd giełdy
       } else if (k.c.length < 200) {

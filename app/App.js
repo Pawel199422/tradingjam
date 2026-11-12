@@ -515,7 +515,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
       {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? errText(a.error) : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
         <View>
           <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
-          {a.src === '4h' ? <Text style={s.small}>{coin.base} ma za krótką historię dzienną, więc prognoza {a.horizonTxt} jest liczona ze świec 4-godzinnych.</Text> : null}
+          {a.src ? <Text style={s.small}>{coin.base} jest młodym coinem (za mało dłuższych świec), więc prognoza {a.horizonTxt} jest liczona ze świec {a.src === '1h' ? '1-godzinnych' : '4-godzinnych'}.</Text> : null}
           <VerdictBox d={E.dirOf(a, mode)} coin={coin} a={a} />
           <MismatchNote coin={coin} a={a} mode={mode} />
           <RegimeNote coin={coin} a={a} />

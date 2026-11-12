@@ -14,6 +14,8 @@ const CFG = {
 // zmienność 4h × √6 ≈ zmienność dzienna, więc ruch skalujemy o 2,45.
 const ALT_CFG = {
   '1d4h': { label: '4h', H: 84, m: 2 * 2.45, horizonTxt: '14 dni', scale: 2.45 },
+  // 3 dni dla młodego coina: 72 świece 1h, cel/stop skalowane √4 = 2 (ATR 1h → ATR 4h)
+  '4h1h': { label: '1h', H: 72, m: 2 * 2, horizonTxt: '3 dni', scale: 2 },
   '30d4h': { label: '4h', H: 180, m: 2 * 2.45 * 1.46, horizonTxt: '30 dni', scale: 2.45 * 1.46 },
 };
 const MIN_DAILY = 200; // min. liczba świec dziennych dla zwykłej prognozy 14 dni
@@ -267,7 +269,7 @@ function analyze(k, iv) {
   return {
     brk,
     regime,
-    src: ALT_CFG[iv] ? '4h' : null,
+    src: ALT_CFG[iv] ? ALT_CFG[iv].label : null,
     safe, big,
     iv, label, horizonTxt, H, m, price,
     probs: { up: p[0], down: p[1], side: p[2] }, prior: { up: prior[0], down: prior[1], side: prior[2] },
