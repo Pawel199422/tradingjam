@@ -376,13 +376,13 @@ function TopRow({ rank, row, horizonTxt, onPress }) {
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[s.card, dim && { opacity: 0.75 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Text style={s.rank}>{rank}</Text>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', rowGap: 4 }}>
             <Text style={s.sym}>{coin.base}</Text><CatBadge coin={coin} /><ExBadges coin={coin} /><ExtremeBadge coin={coin} /><LiquidityBadge coin={coin} /><RegimeBadge a={row.a} />
           </View>
           <Text style={s.small}>{fmtPrice(coin.price)} $ · 24h <Text style={{ color: coin.chg >= 0 ? C.up : C.down }}>{sgn(coin.chg)}</Text></Text>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
+        <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
           <View style={[s.dirPill, { backgroundColor: col }]}><Text style={s.dirPillT}>{d.dir}</Text></View>
           <Text style={[s.bigPct, { color: col }]}>{pct0(d.p)}</Text>
         </View>
@@ -782,14 +782,14 @@ export default function App() {
             <Text style={[s.small, { marginVertical: 6 }]}>{filtered.length} coinów</Text>
             {filtered.slice(0, shown).map(({ c, d, a }) => (
               <TouchableOpacity key={c.ex + c.sym} onPress={() => setSel(c)} style={s.row}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', rowGap: 4 }}>
                     <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{c.base}</Text><CatBadge coin={c} /><ExBadges coin={c} /><ExtremeBadge coin={c} /><LiquidityBadge coin={c} /><RegimeBadge a={a} />
                   </View>
                   <Text style={s.small}>{fmtPrice(c.price)} $ · <Text style={{ color: c.chg >= 0 ? C.up : C.down }}>{sgn(c.chg)}</Text> · {fmtVol(c.qv)}</Text>
                 </View>
                 {d ? (
-                  <View style={{ alignItems: 'flex-end' }}>
+                  <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' }}>
                     <Text style={{ color: d.weak ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
                     <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.weak ? weakShort(E.weakWhy(d)) : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
                   </View>
