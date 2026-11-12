@@ -184,6 +184,7 @@ function Legend() {
     ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
     ['⚠ model tu nie działa', 'model SPRAWDZILIŚMY na historii coina i zgadywał nie lepiej niż zwykła średnia. Procent nic nie mówi. Takie coiny są wyszarzone i na końcu listy.'],
     ['⚠ niesprawdzone (młody coin)', 'coin jest za młody, żeby model w ogóle SPRAWDZIĆ. Nie wiadomo, czy procent jest coś wart. Też na końcu listy.'],
+    ['🔄 Zmiana trendu', 'szansa, że w podanym czasie cena przetnie swoją średnią (EMA 50) w drugą stronę – czyli obecny trend zostanie przełamany. Pionowa kreska na pasku = jak często zdarza się to normalnie.'],
     ['⚠ 1 trend', 'historia coina to głównie jeden silny trend (np. wielokrotny wzrost), a teraz cena idzie w drugą stronę. Statystyka może być skrzywiona – coin jest na końcu listy.'],
     ['⚡ ekstremalny ruch', 'cena zmieniła się o 40% lub więcej w 24h (pump/dump). Historia słabo opisuje takie sytuacje – ryzyko jest bardzo wysokie.'],
     ['Funding', 'opłata między longami i shortami na kontraktach. Dodatni = więcej chętnych na long (longi płacą), ujemny = przewaga shortów.'],
@@ -271,6 +272,7 @@ const GUIDE = [
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
   ['„Model tu nie działa” vs „Niesprawdzone”', 'Zanim pokażemy procent, robimy modelowi sprawdzian: każemy mu zgadywać ok. 1000 sytuacji z przeszłości coina, których nie widział, i liczymy trafienia.\n\n⚠ Model tu nie działa – sprawdzian się odbył i model wypadł nie lepiej niż zwykła średnia. Wiemy, że procent nic nie mówi. (Jak zawodnik, który rozegrał 1000 meczów i nie wygrywał częściej niż przeciętny.)\n\n⚠ Niesprawdzone (młody coin) – coin jest za krótko na giełdzie, żeby zrobić sprawdzian. Nie wiemy, czy procent jest coś wart. (Jak nowy zawodnik bez żadnego meczu.)\n\nW obu przypadkach nie sugeruj się procentem – dlatego takie coiny są wyszarzone i na końcu TOP 10.'],
   ['Czy aplikacja kieruje się średnią kroczącą?', 'Częściowo. Średnia krocząca (EMA 50 i nachylenie EMA 20) to 2 z 7 czynników. Pozostałe to RSI, wolumen, presja kupujących, delta wolumenu (CVD) i pozycja ceny w zakresie 20 świec. Model nie ma sztywnej reguły typu „cena pod średnią = sprzedawaj” – sprawdza, jak w historii danego coina kończyły się podobne układy wszystkich czynników razem. To oznacza, że wynik zależy od przeszłości coina, a nie od samego wykresu z ostatnich dni.'],
+  ['🔄 Zmiana trendu – co to jest?', 'Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii. Karta w szczegółach coina pokazuje, jak często w historii tego coina – w podobnym układzie wykresu – dochodziło do przełamania w podanym czasie, oraz na jakim poziomie ceny leży średnia. Im dalej cena od średniej (np. zaraz po dużym pumpie), tym zwykle mniejsza szansa na przełamanie w krótkim czasie. Przełamanie nie oznacza, że cena pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie.'],
   ['⚠ Historia z jednego trendu', 'Gdy coin w całej swojej historii np. kilkukrotnie urósł, model „nauczył się”, że zwykle rośnie. Jeśli teraz cena wyraźnie spada, takich sytuacji w danych prawie nie ma – statystyka patrzy w lusterko wsteczne i może się kłócić z tym, co widać na wykresie. Dlatego pokazujemy wtedy ostrzeżenie i przesuwamy coin na koniec TOP 10. To samo działa w drugą stronę (coin, który głównie spadał, a teraz rośnie).'],
   ['⚡ Ekstremalny ruch', 'Coin zmienił cenę o 40% lub więcej w 24h (gwałtowny wzrost lub spadek). W takich sytuacjach historia słabo opisuje to, co się dzieje, więc statystyka jest niewiarygodna, a zmienność i ryzyko – wyjątkowo wysokie.'],
   ['Horyzonty', '24 godz. – krótki trading, szybkie ruchy, więcej przypadkowości. 3 dni – swing, dobry kompromis. 14 dni – dłuższe pozycje, większe ruchy w procentach.'],
@@ -381,9 +383,63 @@ function ScenarioCard({ coin, d, horizonTxt }) {
   );
 }
 
+// Karta „Zmiana trendu” – szansa, że cena przetnie średnią EMA50 w drugą stronę
+const VIOLET = '#a78bfa';
+function TrendCard({ a, coin }) {
+  const [open, setOpen] = useState(false);
+  const b = a.brk; if (!b) return null;
+  const help = open ? (
+    <Text style={[s.small, { color: C.text, marginTop: 6 }]}>
+      Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii.{'\n\n'}
+      Procent pokazuje, jak często w historii {coin.base} – w podobnym układzie wykresu – dochodziło do takiego przełamania w podanym czasie. „Normalnie” to średnia dla wszystkich sytuacji z tym samym trendem.{'\n\n'}
+      Przełamanie nie znaczy, że cena potem pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie. Często po nim cena wraca do średniej i „testuje” ją jeszcze raz.
+    </Text>
+  ) : null;
+  const toggle = <TouchableOpacity onPress={() => setOpen(!open)}><Text style={{ color: C.accent, fontSize: 12 }}>{open ? 'Zwiń' : 'Co to znaczy?'}</Text></TouchableOpacity>;
+  if (!b.side) return (
+    <View style={[s.card, { borderColor: C.line }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ color: C.text, fontWeight: '800' }}>🔄 Zmiana trendu</Text>{toggle}
+      </View>
+      <Text style={s.small}>Brak wyraźnego trendu – cena jest blisko swojej średniej, więc nie ma czego przełamywać.</Text>
+      {help}
+    </View>
+  );
+  const up = b.side === 'up';
+  const dist = (b.level / a.price - 1) * 100;
+  const why = b.p === null ? null : E.weakWhy(b);
+  const col = b.p === null || b.weak ? C.mute : VIOLET;
+  return (
+    <View style={[s.card, { borderColor: col }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>🔄 Zmiana trendu</Text>
+        <Text style={{ color: col, fontWeight: '900', fontSize: 22 }}>{b.p === null ? '–' : pct0(b.p)}</Text>
+      </View>
+      <Text style={[s.li, { marginTop: 2 }]}>Trend teraz: <Text style={{ color: up ? C.up : C.down, fontWeight: '700' }}>{up ? '↗ wzrostowy' : '↘ spadkowy'}</Text></Text>
+      {b.p !== null ? (
+        <View style={{ height: 8, backgroundColor: C.line, borderRadius: 4, marginVertical: 8 }}>
+          <View style={{ width: `${Math.max(2, b.p * 100)}%`, height: 8, borderRadius: 4, backgroundColor: col }} />
+          {b.prior !== null ? <View style={{ position: 'absolute', left: `${b.prior * 100}%`, top: -3, width: 2, height: 14, backgroundColor: C.text, opacity: 0.7 }} /> : null}
+        </View>
+      ) : null}
+      <Text style={s.small}>
+        {b.p === null ? 'Za mało podobnych sytuacji w historii coina, żeby policzyć szansę. ' : 'Szansa, że '}
+        {b.p === null ? '' : <>w ciągu {a.horizonTxt} cena zamknie się <Text style={{ color: C.text, fontWeight: '700' }}>{up ? 'pod' : 'nad'} średnią {fmtPrice(b.level)} ({sgn(dist)})</Text> – czyli trend {up ? 'wzrostowy' : 'spadkowy'} zostanie przełamany.</>}
+      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+        <Text style={[s.small, why ? { color: C.warn } : null]}>
+          {b.p !== null && b.prior !== null ? `normalnie ${pct0(b.prior)} = kreska na pasku` : ''}{why ? ` · ${why === 'short' ? '⚠ niesprawdzone' : '⚠ model tu nie działa'}` : ''}
+        </Text>
+        {toggle}
+      </View>
+      {help}
+    </View>
+  );
+}
+
 // ---------- Szczegóły coina ----------
 // Czytelny opis błędu pobierania (np. chińskie komunikaty BingX)
-const errText = e => (/[\u4e00-\u9fff]|limit|frequen|later/i.test(e)
+const errText = e => (/^Za młody/.test(e) ? e : /[\u4e00-\u9fff]|limit|frequen|later|ograniczył/i.test(e)
   ? 'Giełda chwilowo nie oddała danych dla tego horyzontu (limit zapytań). Dane pojawią się po kolejnym skanie – zwykle w ciągu godziny. Sprawdź też inne horyzonty.'
   : e);
 function Detail({ coin, iv0, mode0, onBack }) {
@@ -434,6 +490,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
             const cards = [<ScenarioCard key="L" coin={coin} d={L} horizonTxt={a.horizonTxt} />, <ScenarioCard key="S" coin={coin} d={S} horizonTxt={a.horizonTxt} />];
             return first === 'L' ? cards : cards.reverse();
           })()}
+          <TrendCard a={a} coin={coin} />
           {mode === 'equal' ? (
             <ProbBar label="Konsolidacja (żaden poziom)" p={a.probs.side} color={C.side} sub={`historycznie ${pct0(a.prior.side)}`} />
           ) : null}
@@ -537,16 +594,40 @@ export default function App() {
   useEffect(() => { load(); }, []);
   // Bybit blokuje serwery skanera, więc listę coinów z Bybit pobiera urządzenie użytkownika
   useEffect(() => { X.bybitBases().then(set => { if (set && set.size) setBybitSet(set); }).catch(() => { }); }, []);
+  // Ceny na żywo: co minutę telefon pobiera aktualne ceny z giełd (statystyka zmienia się raz na godzinę ze skanem)
+  const [live, setLive] = useState(null);
+  const [liveAt, setLiveAt] = useState(null);
+  useEffect(() => {
+    let alive = true, n = 0;
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // karta w tle – nie pobieramy
+      const m = new Map();
+      try { for (const t of await X.binanceTickers()) m.set('binance' + t.sym, t); } catch (e) { }
+      try { for (const t of await X.bingxTickers()) m.set('bingx' + t.sym, t); } catch (e) { }
+      if (alive && m.size) { setLive(m); setLiveAt(new Date()); }
+      // co 5 minut sprawdzamy, czy jest nowy skan – wtedy wczytuje się sam, bez odświeżania
+      if (SERVER_ON && ++n % 5 === 0) {
+        try {
+          const r = await fetch(RESULTS_URL + '?t=' + Date.now()); const j = await r.json();
+          if (alive && j && j.generatedAt) setData(d => (!d || d.generatedAt !== j.generatedAt ? { ...j, source: 'server' } : d));
+        } catch (e) { }
+      }
+    };
+    const first = setTimeout(tick, 4000);
+    const id = setInterval(tick, 60000);
+    return () => { alive = false; clearTimeout(first); clearInterval(id); };
+  }, []);
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const coins = useMemo(() => {
     const base = data ? data.coins : [];
     const seen = new Set(base.map(c => c.ex + c.sym));
-    const all = [...base, ...extra.filter(c => !seen.has(c.ex + c.sym))];
+    let all = [...base, ...extra.filter(c => !seen.has(c.ex + c.sym))];
+    if (live) all = all.map(c => { const t = live.get(c.ex + c.sym); return t ? { ...c, price: t.price, chg: t.chg, qv: t.qv, live: true } : c; });
     if (!bybitSet) return all;
     return all.map(c => (bybitSet.has(E.cleanBase(c.base)) && !(c.exs || []).includes('bybit')
       ? { ...c, exs: [...(c.exs || [c.ex]), 'bybit'] } : c));
-  }, [data, extra, bybitSet]);
+  }, [data, extra, bybitSet, live]);
 
   const catItems = useMemo(() => {
     const n = {}; for (const c of coins) { const k = catKey(c); n[k] = (n[k] || 0) + 1; }
@@ -586,7 +667,7 @@ export default function App() {
   if (sel) {
     return (
       <SafeAreaView style={s.root}><StatusBar barStyle="light-content" />
-        <Detail coin={sel} iv0={iv} mode0={mode} onBack={() => setSel(null)} />
+        <Detail coin={(sel && coins.find(c => c.ex + c.sym === sel.ex + sel.sym)) || sel} iv0={iv} mode0={mode} onBack={() => setSel(null)} />
       </SafeAreaView>
     );
   }
@@ -600,8 +681,9 @@ export default function App() {
       >
         <Text style={s.title}>TradingJam</Text>
         <Text style={s.small}>
-          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Skan'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
+          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Statystyka'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
         </Text>
+        {liveAt ? <Text style={s.small}><Text style={{ color: C.up }}>●</Text> Ceny na żywo · {liveAt.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · statystyka odświeża się co godzinę</Text> : null}
         {age > 3 && data && data.source === 'server' ? <Text style={[s.small, { color: C.warn }]}>Wyniki mają ponad {Math.floor(age)} godz. – sprawdź, czy skaner na GitHubie działa.</Text> : null}
         {status ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'center' }}><ActivityIndicator color={C.accent} /><Text style={s.small}>{status}</Text></View> : null}
         {err ? (

@@ -198,20 +198,26 @@ const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv,
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
 async function analyzeCoin(E, ticker, onProgress) {
-  const res = {}; let spark = []; let k4h = null;
+  const res = {}; let spark = []; let k4h = null; let err4h = null; let ageDays = null;
+  const NEED_DAYS = { '1h': 9, '4h': 34, '1d': 50 }; // ile dni historii potrzeba na dany horyzont
+  const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni' };
+  const tooYoung = iv => ({ error: `Za młody coin: ${ticker.base} jest na giełdzie od ok. ${ageDays} dni. Na prognozę na ${HZ[iv]} potrzeba min. ok. ${NEED_DAYS[iv]} dni historii – statystyka pojawi się, gdy coin będzie starszy.`, young: true });
   for (const iv of Object.keys(E.CFG)) {
     try {
       const k = await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
-      if (iv === '1h') spark = k.c.slice(-48).map(x => +x.toPrecision(6));
+      if (iv === '1h') { spark = k.c.slice(-48).map(x => +x.toPrecision(6)); if (k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5)); }
       if (iv === '4h') k4h = k;
       await sleep(0);
       if (iv === '1d' && k.c.length < E.MIN_DAILY && k4h && k4h.c.length >= 300) {
         // młody coin: prognoza 14 dni liczona ze świec 4h
         res[iv] = E.compact(E.analyze(k4h, '1d4h'));
-      } else {
-        res[iv] = k.c.length < 200 ? { error: `Za krótka historia coina (${k.c.length} świec, potrzeba min. 200)` } : E.compact(E.analyze(k, iv));
-      }
-    } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; }
+      } else if (iv === '1d' && k.c.length < E.MIN_DAILY && err4h) {
+        res[iv] = { error: err4h }; // brak świec 4h przez chwilowy błąd giełdy
+      } else if (k.c.length < 200) {
+        if (k.c.length < E.HISTORY && ageDays === null && k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5));
+        res[iv] = tooYoung(iv);
+      } else res[iv] = E.compact(E.analyze(k, iv));
+    } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; if (iv === '4h') err4h = res[iv].error; }
     if (onProgress) onProgress(iv);
   }
   return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };

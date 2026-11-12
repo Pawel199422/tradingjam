@@ -24,7 +24,8 @@ const MODE_BE = { safe: BREAK_EVEN, big: BIG.stop / (BIG.target + BIG.stop), equ
 const MODE_RR = { safe: '1:2', big: '2:1', equal: '1:1' };
 const HISTORY = 3000;    // ile świec historii pobierać na interwał
 const WARMUP = 60;
-const REGIME_X = 4;        // historia: min. 4× wzrost (lub spadek do 1/4) = „jeden trend”       // świece na rozgrzanie wskaźników
+const REGIME_X = 4;
+const TREND_MIN = 0.5;     // min. odległość od EMA50 (w ATR), żeby mówić o wyraźnym trendzie        // historia: min. 4× wzrost (lub spadek do 1/4) = „jeden trend”       // świece na rozgrzanie wskaźników
 const EDGE_MIN = 0.15;   // próg przewagi P(wzrost) - P(spadek) dla sygnału
 
 function parseKlines(raw) {
@@ -233,6 +234,24 @@ function analyze(k, iv) {
     short: dirModel(Z, YSb, lab(YSb), cur, H, BIG.thr),
     levels: { longT: price + tgB * r.atr, longS: price - stB * r.atr, shortT: price - tgB * r.atr, shortS: price + stB * r.atr },
   };
+  // Zmiana trendu: czy w ciągu H świec cena zamknie się po drugiej stronie średniej EMA50
+  let brk = { side: null };
+  if (Math.abs(r.trend) >= TREND_MIN) {
+    const side = r.trend > 0 ? 1 : -1;
+    const YB = new Array(n).fill(null);
+    for (let i = 0; i <= cur - H; i++) {
+      const ri = raw[i]; if (!ri || Math.sign(ri.trend) !== side || Math.abs(ri.trend) < TREND_MIN) continue;
+      let y = 0;
+      for (let j = i + 1; j <= i + H; j++) { const rj = raw[j]; if (rj && Math.sign(rj.trend) === -side) { y = 1; break; } }
+      YB[i] = y;
+    }
+    const labB = labelled.filter(i => YB[i] !== null);
+    const e50 = price - r.trend * r.atr;
+    if (labB.length >= 60) {
+      const m = dirModel(Z, YB, labB, cur, H, 0.5);
+      brk = { side: side > 0 ? 'up' : 'down', level: e50, ...m, nHist: labB.length };
+    } else brk = { side: side > 0 ? 'up' : 'down', level: e50, p: null, nHist: labB.length };
+  }
   // Historia z jednego trendu: coin w całej historii głównie rósł (albo spadał), a teraz idzie w drugą stronę
   let hiC = -Infinity, loC = Infinity;
   for (let i = WARMUP; i <= cur; i++) { if (k.c[i] > hiC) hiC = k.c[i]; if (k.c[i] < loC) loC = k.c[i]; }
@@ -241,6 +260,7 @@ function analyze(k, iv) {
   if (hiC / c0 >= REGIME_X && r.trend < -0.5 && price < hiC * 0.7) regime = { dir: 'up', x: hiC / c0, fromTop: price / hiC - 1 };
   else if (loC / c0 <= 1 / REGIME_X && r.trend > 0.5 && price > loC * 1.4) regime = { dir: 'down', x: loC / c0, fromTop: price / loC - 1 };
   return {
+    brk,
     regime,
     src: ALT_CFG[iv] ? '4h' : null,
     safe, big,
@@ -296,6 +316,7 @@ function compact(a) {
   const R = a.raw;
   return {
     label: a.label, horizonTxt: a.horizonTxt, m: r4(a.m), price: sig(a.price), src: a.src || null,
+    brk: a.brk ? (a.brk.side ? { side: a.brk.side, level: sig(a.brk.level), p: r4(a.brk.p), prior: r4(a.brk.prior), skill: r4(a.brk.skill), hiHit: r4(a.brk.hiHit), hiN: a.brk.hiN || 0, weak: a.brk.p === null || a.brk.p === undefined ? true : a.brk.weak, nHist: a.brk.nHist } : { side: null }) : null,
     regime: a.regime ? { dir: a.regime.dir, x: r4(a.regime.x), fromTop: r4(a.regime.fromTop) } : null,
     probs: { up: r4(a.probs.up), down: r4(a.probs.down), side: r4(a.probs.side) },
     prior: { up: r4(a.prior.up), down: r4(a.prior.down), side: r4(a.prior.side) },
