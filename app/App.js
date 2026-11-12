@@ -96,11 +96,11 @@ const ExBadges = ({ coin }) => {
   return <>{list.map((e, i) => <ExBadge key={e} ex={e} dim={i > 0} />)}</>;
 };
 
-const MODES = [['big', '2:1 · Duży cel'], ['equal', '1:1 · Równy cel'], ['safe', '1:2 · Bliski cel']];
+const MODES = [['big', '2:1 · duży zysk'], ['equal', '1:1 · po równo'], ['safe', '1:2 · mały zysk']];
 const MODE_INFO = {
-  big: 'Cel jest 2× dalej niż stop. Trafia rzadziej, ale jedna wygrana pokrywa dwie przegrane. Opłaca się już powyżej 33%. To układ najczęściej opisywany w nauce tradingu.',
-  equal: 'Cel i stop w tej samej odległości – wygrana jest równa przegranej. Opłaca się powyżej 50%.',
-  safe: 'Cel blisko, stop 2× dalej. Trafia często, ale jedna przegrana zabiera dwie wygrane. Opłaca się dopiero powyżej 67%.',
+  big: 'Ryzykujesz 10 $, możesz zarobić 20 $. Cel jest daleko, więc trafia rzadziej (zwykle 30–45%), ale wystarczy wygrać 1 raz na 3, żeby wyjść na zero (próg 33%).',
+  equal: 'Ryzykujesz 10 $, możesz zarobić 10 $. Żeby wyjść na plus, trzeba wygrywać częściej niż co drugi raz (próg 50%).',
+  safe: 'Ryzykujesz 10 $, możesz zarobić tylko 5 $. Cel jest blisko, więc trafia często (zwykle 60–80%), ale trzeba wygrać 2 razy na 3, żeby wyjść na zero (próg 67%).',
 };
 const breakEven = d => E.MODE_BE[d.mode] || 0.5;
 const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
@@ -211,9 +211,9 @@ function Legend() {
   const [open, setOpen] = useState(false);
   const items = [
     ['LONG 45%', 'w podobnych sytuacjach w historii cena w 45 przypadkach na 100 najpierw doszła do celu w górę, zanim doszła do stopu. SHORT – odwrotnie.'],
-    ['2:1 · Duży cel', 'możliwy zysk 2× większy od straty. Procenty niższe (30–45%), ale próg opłacalności to tylko 33%.'],
-    ['1:1 · Równy cel', 'zysk = strata. Próg opłacalności 50%.'],
-    ['1:2 · Bliski cel', 'możliwy zysk 2× mniejszy od straty. Procenty wysokie (60–80%), ale próg opłacalności aż 67%.'],
+    ['2:1 · duży zysk', 'ryzykujesz 10 $, możesz zarobić 20 $. Procenty niższe (30–45%), ale próg opłacalności to tylko 33%.'],
+    ['1:1 · po równo', 'ryzykujesz 10 $, możesz zarobić 10 $. Próg opłacalności 50%.'],
+    ['1:2 · mały zysk', 'ryzykujesz 10 $, możesz zarobić 5 $. Procenty wysokie (60–80%), ale próg opłacalności aż 67%.'],
     ['✓ powyżej progu', 'statystyka historyczna przekracza próg opłacalności dla wybranego rodzaju celu. Porównuj procent z progiem, a nie między trybami.'],
     ['Dlaczego tu: +13 pkt ponad normę', 'o ile punktów procentowych szansa jest teraz wyższa niż zwykle dla tego coina. Im więcej, tym bardziej obecny wykres zmienia sytuację – według tego układana jest kolejność TOP 10.'],
     ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
@@ -305,7 +305,7 @@ const GUIDE = [
   ['LONG i SHORT', 'LONG = zarabiasz, gdy cena rośnie. SHORT = zarabiasz, gdy cena spada (dostępne na kontraktach, np. na BingX czy Binance Futures).'],
   ['Co znaczy „LONG 45%”?', 'Że w podobnych sytuacjach w przeszłości cena w 45 przypadkach na 100 najpierw doszła do celu, a dopiero potem (albo wcale) do stopu. To nie jest gwarancja. Czy 45% to dużo, zależy od rodzaju celu: przy układzie 2:1 to wynik powyżej progu opłacalności (33%), przy 1:1 – poniżej (50%).'],
   ['Cel i stop', 'Cel (take profit) – poziom ceny zamknięcia z zyskiem. Stop (stop loss) – poziom zamknięcia ze stratą, który ogranicza dalsze straty. W statystyce aplikacji oba poziomy są liczone automatycznie ze zmienności coina, żeby porównywać scenariusze w jednakowy sposób.'],
-  ['Rodzaj celu: 2:1, 1:1 czy 1:2?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 Duży cel – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 Równy – zysk = strata, opłaca się powyżej 50%. 1:2 Bliski cel – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
+  ['Ile możesz zarobić, a ile stracić (2:1, 1:1, 1:2)?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 · duży zysk (ryzykujesz 10 $, możesz zarobić 20 $) – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 · po równo (10 $ na 10 $) – zysk = strata, opłaca się powyżej 50%. 1:2 · mały zysk (ryzykujesz 10 $, możesz zarobić 5 $) – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
   ['„Wykres nic tu nie mówi” i „Za młody coin”', 'Każdy procent sprawdzamy na historii danego coina: czy w przeszłości trafiał lepiej niż zwykła średnia (np. „ten coin robi taki ruch w 37% przypadków”).\n\n⚠ Wykres nic tu nie mówi – sprawdziliśmy i procent z aplikacji nie był lepszy od średniej. Nie sugeruj się nim.\n\n⚠ Za młody coin – coin jest za krótko na giełdzie, żeby to sprawdzić. Procent to zgadywanie.\n\nTakie coiny są wyszarzone i na końcu TOP 10.'],
   ['Jak powstaje TOP 10?', 'Dla każdego coina bierzemy mocniejszy scenariusz (LONG albo SHORT) na wybranym horyzoncie i rodzaju celu. Potem układamy listę w trzech grupach: 1) scenariusze, które przeszły test na historii coina i są powyżej progu opłacalności, 2) te, które przeszły test, ale są pod progiem, 3) coiny z ostrzeżeniem (wykres nic nie mówi, za młody coin, ekstremalny ruch, historia z jednego trendu, mały obrót). W każdej grupie decyduje przewaga nad normą: o ile punktów procentowych szansa jest teraz wyższa niż zwykle dla tego coina. Np. coin, który normalnie trafia w 27%, a teraz w 40% (+13 pkt), będzie wyżej niż coin z 38% przy normie 36% (+2 pkt) – bo tu obecny wykres naprawdę coś zmienia. Pod każdym coinem w TOP 10 jest linijka „Dlaczego tu”.'],
@@ -508,7 +508,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
       <Text style={s.label}>Horyzont</Text>
       <Chips items={HORIZONS} value={iv} onChange={setIv} />
       <Text style={s.small}>{HORIZON_INFO[iv]}</Text>
-      <Text style={s.label}>Rodzaj celu</Text>
+      <Text style={s.label}>Ile możesz zarobić, a ile stracić</Text>
       <Chips items={MODES} value={mode} onChange={setMode} />
       <Text style={s.small}>{MODE_INFO[mode]}</Text>
 
@@ -749,7 +749,7 @@ export default function App() {
           <Text style={s.label}>Horyzont prognozy</Text>
           <Chips items={HORIZONS} value={iv} onChange={setIv} />
           <Text style={s.small}>{HORIZON_INFO[iv]}</Text>
-          <Text style={s.label}>Rodzaj celu</Text>
+          <Text style={s.label}>Ile możesz zarobić, a ile stracić</Text>
           <Chips items={MODES} value={mode} onChange={setMode} />
           <Text style={s.small}>{MODE_INFO[mode]}</Text>
           <Text style={s.label}>Kierunek</Text>
