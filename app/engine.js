@@ -356,6 +356,9 @@ function dirOf(a, mode = 'equal', side = null) {
 // Ekstremalny ruch w 24h – historia coina słabo opisuje taką sytuację
 const EXTREME_PCT = 40;
 const isExtreme = c => Math.abs(c.chg || 0) >= EXTREME_PCT;
+// Niska płynność: mały obrót z 24h – pojedyncze knoty łatwo wybijają stop
+const LOW_QV = 2e5;
+const isIlliquid = c => c && c.qv > 0 && c.qv < LOW_QV;
 // Powód braku zaufania: 'short' = za krótka historia do testu, 'noedge' = test nie wykazał przewagi
 const weakWhy = d => (!d || !d.weak ? null : d.skill === null || d.skill === undefined ? 'short' : 'noedge');
 
@@ -370,7 +373,7 @@ function verdict(d, coin, a) {
   if (weakWhy(d) === 'noedge') return { level: 'none', text: 'Wykres nic tu nie mówi – ten procent nie jest lepszy od zwykłej średniej.' };
   if (d.p > be + 0.02) return { level: 'go', text: `Statystycznie: przewaga scenariusza ${d.dir} – ${pc}% przy progu opłacalności ${bc}%.` };
   if (d.p >= be - 0.005) return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – na granicy progu opłacalności ${bc}% (za mały zapas, by mówić o przewadze).` };
-  return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – poniżej progu opłacalności ${bc}%.` };
+  return { level: 'weak', text: `Żaden scenariusz nie przekracza progu opłacalności ${bc}% (najwyżej ${d.dir} ${pc}%). Statystyka nie podpowiada ani longa, ani shorta.` };
 }
 
 function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
@@ -380,7 +383,7 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
     const d = dirOf(a, mode, dir === 'all' ? null : dir); if (!d || d.p === null) continue;
     rows.push({ coin: c, a, d });
   }
-  const bad = r => (r.d.weak || isExtreme(r.coin) || (r.a && r.a.regime) ? 1 : 0);
+  const bad = r => (r.d.weak || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime) ? 1 : 0);
   rows.sort((x, y) => (bad(x) - bad(y)) || (y.d.p - x.d.p));
   return rows.slice(0, n);
 }
@@ -419,4 +422,4 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+module.exports = { LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
