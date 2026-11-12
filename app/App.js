@@ -215,6 +215,7 @@ function Legend() {
     ['1:1 · Równy cel', 'zysk = strata. Próg opłacalności 50%.'],
     ['1:2 · Bliski cel', 'możliwy zysk 2× mniejszy od straty. Procenty wysokie (60–80%), ale próg opłacalności aż 67%.'],
     ['✓ powyżej progu', 'statystyka historyczna przekracza próg opłacalności dla wybranego rodzaju celu. Porównuj procent z progiem, a nie między trybami.'],
+    ['Dlaczego tu: +13 pkt ponad normę', 'o ile punktów procentowych szansa jest teraz wyższa niż zwykle dla tego coina. Im więcej, tym bardziej obecny wykres zmienia sytuację – według tego układana jest kolejność TOP 10.'],
     ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
     ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
     ['⚠ wykres nic tu nie mówi', 'sprawdziliśmy na historii coina: procent z aplikacji trafiał nie lepiej niż zwykła średnia. Nie sugeruj się nim. Takie coiny są wyszarzone i na końcu listy.'],
@@ -307,6 +308,7 @@ const GUIDE = [
   ['Rodzaj celu: 2:1, 1:1 czy 1:2?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 Duży cel – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 Równy – zysk = strata, opłaca się powyżej 50%. 1:2 Bliski cel – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
   ['„Wykres nic tu nie mówi” i „Za młody coin”', 'Każdy procent sprawdzamy na historii danego coina: czy w przeszłości trafiał lepiej niż zwykła średnia (np. „ten coin robi taki ruch w 37% przypadków”).\n\n⚠ Wykres nic tu nie mówi – sprawdziliśmy i procent z aplikacji nie był lepszy od średniej. Nie sugeruj się nim.\n\n⚠ Za młody coin – coin jest za krótko na giełdzie, żeby to sprawdzić. Procent to zgadywanie.\n\nTakie coiny są wyszarzone i na końcu TOP 10.'],
+  ['Jak powstaje TOP 10?', 'Dla każdego coina bierzemy mocniejszy scenariusz (LONG albo SHORT) na wybranym horyzoncie i rodzaju celu. Potem układamy listę w trzech grupach: 1) scenariusze, które przeszły test na historii coina i są powyżej progu opłacalności, 2) te, które przeszły test, ale są pod progiem, 3) coiny z ostrzeżeniem (wykres nic nie mówi, za młody coin, ekstremalny ruch, historia z jednego trendu, mały obrót). W każdej grupie decyduje przewaga nad normą: o ile punktów procentowych szansa jest teraz wyższa niż zwykle dla tego coina. Np. coin, który normalnie trafia w 27%, a teraz w 40% (+13 pkt), będzie wyżej niż coin z 38% przy normie 36% (+2 pkt) – bo tu obecny wykres naprawdę coś zmienia. Pod każdym coinem w TOP 10 jest linijka „Dlaczego tu”.'],
   ['Widzę trend wzrostowy, a LONG ma tylko 15–30%. Dlaczego?', 'Bo procent nie odpowiada na pytanie „czy cena wzrośnie?”, tylko: czy cena dojdzie do konkretnego celu, ZANIM dotknie stopu, w podanym czasie. Trend może trwać, a cena po drodze i tak wybije stop. Do tego w układzie 2:1 cel jest daleko, więc trafia rzadko – 30–40% to normalny wynik, a liczy się próg 33%. Wreszcie statystyka pochodzi z historii danego coina: jeśli w podobnych układach cena częściej wracała, niż szła dalej, procent będzie niski mimo trendu. W szczegółach coina, gdy procent „kłóci się” z trendem, aplikacja pokazuje ramkę z wyjaśnieniem dla tego konkretnego coina.'],
   ['Czy aplikacja kieruje się średnią kroczącą?', 'Częściowo. Średnia krocząca (EMA 50 i nachylenie EMA 20) to 2 z 7 czynników. Pozostałe to RSI, wolumen, presja kupujących, delta wolumenu (CVD) i pozycja ceny w zakresie 20 świec. Model nie ma sztywnej reguły typu „cena pod średnią = sprzedawaj” – sprawdza, jak w historii danego coina kończyły się podobne układy wszystkich czynników razem. To oznacza, że wynik zależy od przeszłości coina, a nie od samego wykresu z ostatnich dni.'],
   ['🔄 Zmiana trendu – co to jest?', 'Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii. Karta w szczegółach coina pokazuje, jak często w historii tego coina – w podobnym układzie wykresu – dochodziło do przełamania w podanym czasie, oraz na jakim poziomie ceny leży średnia. Im dalej cena od średniej (np. zaraz po dużym pumpie), tym zwykle mniejsza szansa na przełamanie w krótkim czasie. Przełamanie nie oznacza, że cena pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie.'],
@@ -395,6 +397,7 @@ function TopRow({ rank, row, horizonTxt, onPress }) {
             : <Text style={s.meta}>{d.p >= breakEven(d) - 0.005 ? 'na granicy progu' : 'poniżej progu'} {pct0(breakEven(d))}</Text>}
       </View>
       <VerdictBox d={d} coin={coin} a={row.a} compact />
+      {row.tier !== undefined ? (() => { const rr = E.rankReason(row); return <Text style={[s.meta, { marginTop: 4, color: rr.good ? C.accent : C.mute, fontWeight: '600' }]}>{rr.text}</Text>; })() : null}
     </TouchableOpacity>
   );
 }
@@ -759,6 +762,7 @@ export default function App() {
         {tab === 'top' ? (
           <View>
             <Text style={s.h2}>TOP 10 scenariuszy na {horizonTxt}{catF !== 'all' ? ` · ${E.CATS[catF].label}` : ''}</Text>
+            <Text style={[s.small, { marginBottom: 6 }]}>Kolejność: najpierw scenariusze, które przeszły test na historii i są powyżej progu – od największej przewagi nad normą (jak bardzo obecny wykres zwiększa szansę w porównaniu ze zwykłym zachowaniem coina). Coiny z ostrzeżeniami są na końcu.</Text>
             {top.length === 0 && !status ? <Text style={s.small}>{coins.length ? 'Dane dla tego rodzaju celu pojawią się po najbliższym skanie (co godzinę).' : 'Brak wyników.'}</Text> : null}
             {top.map((row, i) => (
               <TopRow key={row.coin.ex + row.coin.sym} rank={i + 1} row={row} horizonTxt={horizonTxt} onPress={() => setSel(row.coin)} />

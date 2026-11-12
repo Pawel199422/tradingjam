@@ -388,9 +388,27 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
     const d = dirOf(a, mode, dir === 'all' ? null : dir); if (!d || d.p === null) continue;
     rows.push({ coin: c, a, d });
   }
-  const bad = r => (r.d.weak || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime) ? 1 : 0);
-  rows.sort((x, y) => (bad(x) - bad(y)) || (y.d.p - x.d.p));
+  // Kolejność: 0 = wiarygodny i powyżej progu, 1 = wiarygodny pod progiem, 2 = z ostrzeżeniem.
+  // W grupie: największa przewaga nad normą („teraz − normalnie”), potem wyższy procent.
+  for (const r of rows) { r.tier = rankTier(r); r.lift = liftOf(r.d); }
+  rows.sort((x, y) => (x.tier - y.tier) || (y.lift - x.lift) || (y.d.p - x.d.p));
   return rows.slice(0, n);
+}
+const liftOf = d => (d && d.p !== null && d.hist !== null && d.hist !== undefined ? d.p - d.hist : 0);
+function rankTier(r) {
+  if (r.d.weak || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime)) return 2;
+  return r.d.p > (MODE_BE[r.d.mode] || 0.5) + 0.02 ? 0 : 1;
+}
+// Krótki powód miejsca w TOP 10 (do wyświetlenia przy coinie)
+function rankReason(r) {
+  const lift = Math.round(liftOf(r.d) * 100);
+  const liftTxt = lift > 0 ? `+${lift} pkt ponad normę` : lift < 0 ? `${lift} pkt poniżej normy` : 'na poziomie normy';
+  if (r.tier === 2) {
+    const why = isExtreme(r.coin) ? '⚡ ekstremalny ruch' : r.a && r.a.regime ? '⚠ historia z jednego trendu' : isIlliquid(r.coin) ? '💧 mały obrót' : weakWhy(r.d) === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi';
+    return { good: false, text: `Na końcu listy: ${why}` };
+  }
+  if (r.tier === 0) return { good: true, text: `Dlaczego tu: ${liftTxt} · powyżej progu · test na historii zdany ✓` };
+  return { good: false, text: `Dlaczego tu: ${liftTxt} · test zdany, ale pod progiem opłacalności` };
 }
 
 // ---------- Kategorie coinów ----------
@@ -427,4 +445,4 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+module.exports = { rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
