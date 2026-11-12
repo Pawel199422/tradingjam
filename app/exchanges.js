@@ -33,7 +33,7 @@ async function binanceGet(path) {
   throw last;
 }
 
-const STABLE = new Set(['USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'USDP', 'EUR', 'USDE', 'USD1', 'PYUSD', 'XUSD', 'RLUSD', 'AEUR', 'EURI', 'USDS', 'GBP', 'BFUSD', 'USTC', 'PAXG', 'WBTC', 'WBETH', 'BNSOL']);
+const STABLE = new Set(['USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'USDP', 'EUR', 'USDE', 'USD1', 'PYUSD', 'XUSD', 'RLUSD', 'AEUR', 'EURI', 'USDS', 'GBP', 'BFUSD', 'USTC', 'PAXG', 'WBTC', 'WBETH', 'BNSOL', 'USDG', 'STETH', 'WSTETH', 'WEETH', 'FDUSD', 'USDQ', 'USDR']);
 // tokenizowane akcje/ETF (np. TQQQB, SKHYB, KORUB, NVDAX) – to nie są kryptowaluty
 const STOCK_LIST = 'TQQQ SQQQ SOXL SOXS SPY QQQ NVDA TSLA AAPL MSFT AMZN GOOGL GOOG META INTC SKHY COIN MSTR AMD NFLX HOOD CRCL PLTR ORCL AVGO TSM BABA GME AMC SPCX IWM TLT GLD SLV USO '
   + 'KORU INTW SNXX TSLL NVDL NVDU CONL MSTU MSTX MSTZ BITX BITU ETHU SBIT UPRO SPXL SPXS SPXU TNA TZA LABU LABD YINN YANG FNGU FNGD TECL TECS UDOW SDOW TMF TMV '
@@ -210,12 +210,15 @@ async function okxGet(path) {
   }
   throw new Error('OKX chwilowo ograniczył liczbę zapytań');
 }
+// OKX ma tokenizowane akcje z prefiksem „X” (XNVDA, XTSLA, XQQQ…) – to nie są kryptowaluty
+const OKX_X_CRYPTO = new Set(['XCH', 'XDC', 'XEM', 'XEC', 'XTZ', 'XRP', 'XLM', 'XMR', 'XAUT', 'XVS', 'XYO', 'XNO', 'XPR', 'XAI', 'XION', 'XPL', 'XVG', 'XCN', 'XETA']);
+const okxStock = base => /^X[A-Z]{2,6}$/.test(base) && !OKX_X_CRYPTO.has(base);
 async function okxTickers() {
   const d = await okxGet('/api/v5/market/tickers?instType=SPOT');
   return (d || []).filter(t => /^[A-Z0-9]{2,20}-USDT$/.test(t.instId)).map(t => {
     const last = +t.last, open = +t.open24h;
     return { ex: 'okx', sym: t.instId, base: t.instId.split('-')[0], price: last, chg: open > 0 ? (last / open - 1) * 100 : 0, qv: +t.volCcy24h };
-  }).filter(t => !isJunk(t.base) && t.qv > 0 && isFinite(t.price));
+  }).filter(t => !isJunk(t.base) && !okxStock(t.base) && t.qv > 0 && isFinite(t.price));
 }
 async function okxKlines(sym, iv, total) {
   const want = Math.min(total, OKX_MAX); const map = new Map(); let after = null;
