@@ -430,7 +430,7 @@ function TrendCard({ a, coin }) {
   const b = a.brk; if (!b) return null;
   const help = open ? (
     <Text style={[s.small, { color: C.text, marginTop: 6 }]}>
-      Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii.{'\n\n'}
+      Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii. Średnia nie stoi w miejscu – co świecę przesuwa się w stronę ceny. Po mocnym wzroście, gdy cena zaczyna stać w miejscu, średnia szybko ją dogania i przełamanie następuje bez dużego spadku. Dlatego wysoka szansa na przełamanie NIE oznacza wysokiej szansy na SHORT – częściej oznacza po prostu, że trend słabnie i cena przestaje uciekać od średniej.{'\n\n'}
       Procent pokazuje, jak często w historii {coin.base} – w podobnym układzie wykresu – dochodziło do takiego przełamania w podanym czasie. „Normalnie” to średnia dla wszystkich sytuacji z tym samym trendem.{'\n\n'}
       Przełamanie nie znaczy, że cena potem pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie. Często po nim cena wraca do średniej i „testuje” ją jeszcze raz.
     </Text>
@@ -464,7 +464,7 @@ function TrendCard({ a, coin }) {
       ) : null}
       <Text style={s.small}>
         {b.p === null ? 'Za mało podobnych sytuacji w historii coina, żeby policzyć szansę. ' : 'Szansa, że '}
-        {b.p === null ? '' : <>w ciągu {a.horizonTxt} cena zamknie się <Text style={{ color: C.text, fontWeight: '700' }}>{up ? 'pod' : 'nad'} średnią {fmtPrice(b.level)} ({sgn(dist)})</Text> – czyli trend {up ? 'wzrostowy' : 'spadkowy'} zostanie przełamany.</>}
+        {b.p === null ? '' : <>w ciągu {a.horizonTxt} cena zamknie się <Text style={{ color: C.text, fontWeight: '700' }}>{up ? 'pod' : 'nad'} swoją średnią</Text> – czyli trend {up ? 'wzrostowy' : 'spadkowy'} zostanie przełamany. Średnia jest teraz na {fmtPrice(b.level)} ({sgn(dist)}), ale <Text style={{ color: C.text, fontWeight: '700' }}>przesuwa się za ceną</Text>{Math.abs(dist) > 5 ? ` – gdy cena ${up ? 'przestaje rosnąć' : 'przestaje spadać'}, średnia ją dogania, więc do przełamania nie jest potrzebny ruch o ${Math.abs(dist).toFixed(0)}%` : ''}.</>}
       </Text>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
         <Text style={[s.small, why ? { color: C.warn } : null]}>
