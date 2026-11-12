@@ -382,6 +382,10 @@ function ScenarioCard({ coin, d, horizonTxt }) {
 }
 
 // ---------- Szczegóły coina ----------
+// Czytelny opis błędu pobierania (np. chińskie komunikaty BingX)
+const errText = e => (/[\u4e00-\u9fff]|limit|frequen|later/i.test(e)
+  ? 'Giełda chwilowo nie oddała danych dla tego horyzontu (limit zapytań). Dane pojawią się po kolejnym skanie – zwykle w ciągu godziny. Sprawdź też inne horyzonty.'
+  : e);
 function Detail({ coin, iv0, mode0, onBack }) {
   const [iv, setIv] = useState(iv0);
   const [mode, setMode] = useState(mode0);
@@ -412,7 +416,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
       <Chips items={MODES} value={mode} onChange={setMode} />
       <Text style={s.small}>{MODE_INFO[mode]}</Text>
 
-      {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? a.error : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
+      {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? errText(a.error) : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
         <View>
           <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
           {a.src === '4h' ? <Text style={s.small}>{coin.base} ma za krótką historię dzienną, więc prognoza 14 dni jest liczona ze świec 4-godzinnych.</Text> : null}

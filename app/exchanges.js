@@ -72,11 +72,25 @@ async function binanceTicker(sym) {
 }
 
 // ---------- BingX ----------
+// BingX ogranicza liczbę zapytań – odstęp między zapytaniami + ponawianie przy „spróbuj później”
+let bxLast = 0;
+const BX_GAP = 300; // ms między zapytaniami w jednym wątku
 async function bingxGet(path) {
   const sep = path.includes('?') ? '&' : '?';
-  const j = await http(BINGX + path + sep + 'timestamp=' + Date.now());
-  if (j && j.code !== undefined && j.code !== 0) throw new Error('BingX: ' + (j.msg || j.code));
-  return j.data;
+  let lastMsg = '';
+  for (let i = 0; i < 6; i++) {
+    const wait = bxLast + BX_GAP - Date.now(); bxLast = Math.max(Date.now(), bxLast + BX_GAP);
+    if (wait > 0) await sleep(wait);
+    const j = await http(BINGX + path + sep + 'timestamp=' + Date.now());
+    if (!j || j.code === undefined || j.code === 0) return j.data;
+    lastMsg = String(j.msg || j.code);
+    // limit zapytań / chwilowy błąd serwera (np. „请稍后重试” = spróbuj później) → czekamy i ponawiamy
+    if (/请稍后|稍后重试|too many|frequen|rate|limit|busy|timeout|later/i.test(lastMsg) || [100410, 100500, 100503, 80012].includes(+j.code)) {
+      await sleep(2000 * (i + 1)); continue;
+    }
+    throw new Error('BingX: ' + lastMsg);
+  }
+  throw new Error('BingX chwilowo ograniczył liczbę zapytań – dane pojawią się po kolejnym skanie');
 }
 
 const num = x => parseFloat(String(x).replace('%', ''));
