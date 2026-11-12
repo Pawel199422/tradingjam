@@ -2,16 +2,19 @@
 // Wynik: out/results.json, który aplikacja pobiera przy starcie.
 
 const fs = require('fs');
+const os = require('os');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const path = require('path');
 const E = require('../app/engine.js');
 const X = require('../app/exchanges.js');
 
 const CONF = {
-  BINANCE_TOP: +(process.env.BINANCE_TOP || 100),  // ile najpłynniejszych coinów z Binance
-  BINGX_TOP: +(process.env.BINGX_TOP || 100),      // ile coinów z BingX, których NIE MA na Binance (lowcapy)
-  MIN_QV_BINANCE: 3e6,                             // min. wolumen 24h w USDT
-  MIN_QV_BINGX: 5e5,
-  CONCURRENCY: 4,
+  BINANCE_TOP: +(process.env.BINANCE_TOP || 200),  // ile najpłynniejszych coinów z Binance
+  BINGX_TOP: +(process.env.BINGX_TOP || 200),      // ile coinów z BingX, których NIE MA na Binance (lowcapy)
+  MIN_QV_BINANCE: 1e6,                             // min. wolumen 24h w USDT
+  MIN_QV_BINGX: 3e5,
+  THREADS: Math.max(1, Math.min(+(process.env.THREADS || 4), os.cpus().length)), // równoległe wątki (obliczenia)
+  CONCURRENCY: 2,                                  // równoległe coiny w jednym wątku
   TIME_LIMIT_MIN: +(process.env.TIME_LIMIT_MIN || 38), // zapas przed limitem joba
   OUT: process.env.OUT || path.join(__dirname, '..', 'out', 'results.json'),
 };
@@ -63,33 +66,34 @@ async function main() {
   const cg = await coingeckoCats(errors);
   let funding = {};
   try { funding = await X.bingxFunding(); console.log(`Funding BingX: ${Object.keys(funding).length} kontraktów`); } catch (e) { errors.push('Funding BingX: ' + e.message); }
-  const notStock = t => E.catOf(t.base, cg) !== 'stock';
+  const onBingxAll = new Set(bx.map(t => E.cleanBase(t.base)));
+  const notStock = t => E.catOf(t.base, cg) !== 'stock' && !X.stockLike(t.base, E.catOf(t.base, cg), onBingxAll.has(E.cleanBase(t.base)));
   bn = bn.filter(notStock); bx = bx.filter(notStock);
 
   const binance = bn.filter(t => t.qv >= CONF.MIN_QV_BINANCE).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINANCE_TOP);
   const onBinance = new Set(bn.map(t => E.cleanBase(t.base)));
   const onBingx = new Set(bx.map(t => E.cleanBase(t.base)));
   const bingx = bx.filter(t => t.qv >= CONF.MIN_QV_BINGX && !onBinance.has(E.cleanBase(t.base))).sort((a, b) => b.qv - a.qv).slice(0, CONF.BINGX_TOP);
-  const universe = [...binance, ...bingx];
+  // Na zmianę Binance/BingX – przy limicie czasu odpadają najmniej płynne z obu list, a nie cały BingX
+  const universe = [];
+  for (let i = 0; i < Math.max(binance.length, bingx.length); i++) { if (binance[i]) universe.push(binance[i]); if (bingx[i]) universe.push(bingx[i]); }
   console.log(`Do analizy: ${binance.length} z Binance + ${bingx.length} z BingX`);
 
-  const coins = []; let next = 0, done = 0, timedOut = false;
-  async function worker() {
-    while (next < universe.length) {
-      if ((Date.now() - t0) / 60000 > CONF.TIME_LIMIT_MIN) { timedOut = true; return; }
-      const t = universe[next++];
-      try {
-        const c = await X.analyzeCoin(E, t);
-        c.cat = E.catOf(t.base, cg);
-        { const f = funding[t.base] !== undefined ? funding[t.base] : funding[E.cleanBase(t.base)]; if (f !== undefined) c.funding = +f.toPrecision(4); }
-        c.exs = [onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx'].filter(Boolean);
-        if (Object.values(c.res).some(a => !a.error)) coins.push(c);
-      } catch (e) { errors.push(`${t.ex} ${t.sym}: ${e.message}`); }
-      done++;
-      if (done % 20 === 0) console.log(`  ${done}/${universe.length} (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
-    }
-  }
-  await Promise.all(Array.from({ length: CONF.CONCURRENCY }, worker));
+  // Wątki: każdy liczy swoją część listy (obliczenia modelu są ciężkie, więc dzielimy je na rdzenie)
+  const coins = []; let done = 0, timedOut = false;
+  const shards = Array.from({ length: CONF.THREADS }, () => []);
+  universe.forEach((t, i) => shards[i % CONF.THREADS].push(t));
+  await Promise.all(shards.map(list => new Promise(resolve => {
+    const w = new Worker(__filename, { workerData: { list, cg, funding, onBinance: [...onBinance], onBingx: [...onBingx], t0, limit: CONF.TIME_LIMIT_MIN, conc: CONF.CONCURRENCY } });
+    w.on('message', m => {
+      if (m.coin) coins.push(m.coin);
+      if (m.error) errors.push(m.error);
+      if (m.timedOut) timedOut = true;
+      if (m.tick) { done++; if (done % 25 === 0) console.log(`  ${done}/${universe.length} (${((Date.now() - t0) / 60000).toFixed(1)} min)`); }
+    });
+    w.on('error', e => { errors.push('Wątek: ' + e.message); resolve(); });
+    w.on('exit', resolve);
+  })));
   if (timedOut) errors.push(`Limit czasu – przeanalizowano ${done}/${universe.length}`);
 
   const out = {
@@ -112,4 +116,27 @@ async function main() {
   if (!coins.length) process.exit(1); // nie nadpisuj danych pustym wynikiem
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// Kod wątku roboczego
+async function workerMain() {
+  const { list, cg, funding, t0, limit, conc } = workerData;
+  const onBinance = new Set(workerData.onBinance), onBingx = new Set(workerData.onBingx);
+  let next = 0;
+  async function loop() {
+    while (next < list.length) {
+      if ((Date.now() - t0) / 60000 > limit) { parentPort.postMessage({ timedOut: true }); return; }
+      const t = list[next++];
+      try {
+        const c = await X.analyzeCoin(E, t);
+        c.cat = E.catOf(t.base, cg);
+        { const f = funding[t.base] !== undefined ? funding[t.base] : funding[E.cleanBase(t.base)]; if (f !== undefined) c.funding = +f.toPrecision(4); }
+        c.exs = [onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx'].filter(Boolean);
+        if (Object.values(c.res).some(a => !a.error)) parentPort.postMessage({ coin: c });
+      } catch (e) { parentPort.postMessage({ error: `${t.ex} ${t.sym}: ${e.message}` }); }
+      parentPort.postMessage({ tick: true });
+    }
+  }
+  await Promise.all(Array.from({ length: conc }, loop));
+}
+
+if (isMainThread) main().catch(e => { console.error(e); process.exit(1); });
+else workerMain().catch(e => { parentPort.postMessage({ error: 'Wątek: ' + e.message }); });

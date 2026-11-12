@@ -34,8 +34,15 @@ async function binanceGet(path) {
 }
 
 const STABLE = new Set(['USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'USDP', 'EUR', 'USDE', 'USD1', 'PYUSD', 'XUSD', 'RLUSD', 'AEUR', 'EURI', 'USDS', 'GBP', 'BFUSD', 'USTC', 'PAXG', 'WBTC', 'WBETH', 'BNSOL']);
-// tokenizowane akcje/ETF (np. TQQQB, SKHYB, NVDAX) – to nie są kryptowaluty
-const STOCK = /^(TQQQ|SQQQ|SOXL|SOXS|SPY|QQQ|NVDA|TSLA|AAPL|MSFT|AMZN|GOOGL|GOOG|META|INTC|SKHY|COIN|MSTR|AMD|NFLX|HOOD|CRCL|PLTR|ORCL|AVGO|TSM|BABA|GME|AMC|SPCX|IWM|DIA|TLT|GLD|SLV|USO)[BX]?$/;
+// tokenizowane akcje/ETF (np. TQQQB, SKHYB, KORUB, NVDAX) – to nie są kryptowaluty
+const STOCK_LIST = 'TQQQ SQQQ SOXL SOXS SPY QQQ NVDA TSLA AAPL MSFT AMZN GOOGL GOOG META INTC SKHY COIN MSTR AMD NFLX HOOD CRCL PLTR ORCL AVGO TSM BABA GME AMC SPCX IWM TLT GLD SLV USO '
+  + 'KORU INTW SNXX TSLL NVDL NVDU CONL MSTU MSTX MSTZ BITX BITU ETHU SBIT UPRO SPXL SPXS SPXU TNA TZA LABU LABD YINN YANG FNGU FNGD TECL TECS UDOW SDOW TMF TMV '
+  + 'SOXX SMH ARKK XLK XLF XLE KWEB FXI EWY EWJ EWZ MCHI URA BOTZ IBIT FBTC ETHA GBTC BITO UVXY VXX SVIX PYPL SHOP UBER ABNB NKE JPM BAC WMT MCD '
+  + 'ARM SMCI ASML QCOM TXN ADBE CRM SNOW PANW CRWD RDDT RBLX DJT CRWV CIRCLE SBET BMNR GLXY IREN CLSK MARA RIOT HUT CORZ BTDR WULF CIFR';
+const STOCK = new RegExp('^(' + STOCK_LIST.trim().split(/\s+/).join('|') + ')[BX]?$');
+// Heurystyka dla nowych tokenów-akcji Binance: 4 litery + „B”, tylko na Binance, bez kategorii krypto
+// (np. KORUB, INTWB, SNXXB). Znane krypto z końcówką B (BNB, ARB…) mają inne długości lub kategorię.
+const stockLike = (base, cat, onBingx) => base.length === 5 && /^[A-Z]{4}B$/.test(base) && !onBingx && (cat === 'rwa' || cat === 'other' || cat === 'stock');
 const isJunk = base => STABLE.has(base) || STOCK.test(base) || (/(BULL|BEAR)$/.test(base) && base.length > 4);
 
 async function binanceTickers() {
@@ -196,4 +203,4 @@ async function analyzeCoin(E, ticker, onProgress) {
   return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
 }
 
-module.exports = { bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
+module.exports = { stockLike, STOCK, bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };

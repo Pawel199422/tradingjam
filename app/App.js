@@ -107,15 +107,15 @@ const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
 // Ostrzeżenia: 'short' = za krótka historia do testu, 'noedge' = test nie wykazał przewagi
 const WHY = {
   short: {
-    title: '⚠ Za krótka historia – nie da się sprawdzić modelu',
-    text: c => `${c.base} jest na giełdzie zbyt krótko, żeby przetestować model na jego przeszłości. Procent opiera się na niewielu podobnych sytuacjach, więc traktuj go tylko jako luźną wskazówkę.`,
+    title: '⚠ Niesprawdzone – coin za młody',
+    text: c => `Zanim pokażemy procent, sprawdzamy, czy model w ogóle umie przewidywać ruchy ${c.base}: każemy mu zgadywać ok. 1000 sytuacji z przeszłości, których nie widział, i liczymy trafienia. ${c.base} jest na giełdzie za krótko, więc takiego sprawdzianu nie dało się zrobić.\n\nCo to znaczy dla Ciebie: nie wiadomo, czy ten procent jest coś wart – może być trafny, może być przypadkowy. To jak nowy zawodnik, który nie rozegrał jeszcze żadnego meczu.`,
   },
   noedge: {
-    title: '⚠ Brak przewagi – nie sugeruj się tym procentem',
-    text: c => `Sprawdziliśmy model na ostatnich ~1000 świecach ${c.base}, których nie widział podczas nauki. Jego prognozy nie były trafniejsze niż zwykła statystyka (jak często ${c.base} w ogóle robi taki ruch). Dla tego coina i horyzontu wykres po prostu niewiele mówi o przyszłości – tak bywa zwłaszcza przy dużych, płynnych coinach.`,
+    title: '⚠ Sprawdzone: model tu nie działa',
+    text: c => `Zanim pokażemy procent, sprawdzamy, czy model w ogóle umie przewidywać ruchy ${c.base}: każemy mu zgadywać ok. 1000 sytuacji z przeszłości, których nie widział, i liczymy trafienia. Sprawdzian się odbył – i model wypadł nie lepiej niż zwykła średnia (czyli „jak często ${c.base} w ogóle robi taki ruch”).\n\nCo to znaczy dla Ciebie: ten procent nic nie mówi o przyszłości. Wykres tego coina na tym horyzoncie jest „nieczytelny” dla statystyki – tak bywa zwłaszcza przy dużych, płynnych coinach. To jak zawodnik, który rozegrał 1000 meczów i nie wygrywał częściej niż przeciętny.`,
   },
 };
-const weakShort = why => (why === 'short' ? '⚠ za krótka historia' : '⚠ brak przewagi');
+const weakShort = why => (why === 'short' ? '⚠ niesprawdzone (młody coin)' : '⚠ model tu nie działa');
 function WeakNote({ coin, why, sides }) {
   const [open, setOpen] = useState(false);
   if (!why) return null;
@@ -182,8 +182,8 @@ function Legend() {
     ['✓ powyżej progu', 'statystyka historyczna przekracza próg opłacalności dla wybranego rodzaju celu. Porównuj procent z progiem, a nie między trybami.'],
     ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
     ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
-    ['brak przewagi', 'w teście na historii model nie był lepszy niż zwykła statystyka – procent może być przypadkowy. Takie coiny są wyszarzone i na końcu listy.'],
-    ['za krótka historia', 'coin jest za młody, żeby sprawdzić model. Procent to tylko luźna wskazówka.'],
+    ['⚠ model tu nie działa', 'model SPRAWDZILIŚMY na historii coina i zgadywał nie lepiej niż zwykła średnia. Procent nic nie mówi. Takie coiny są wyszarzone i na końcu listy.'],
+    ['⚠ niesprawdzone (młody coin)', 'coin jest za młody, żeby model w ogóle SPRAWDZIĆ. Nie wiadomo, czy procent jest coś wart. Też na końcu listy.'],
     ['⚠ 1 trend', 'historia coina to głównie jeden silny trend (np. wielokrotny wzrost), a teraz cena idzie w drugą stronę. Statystyka może być skrzywiona – coin jest na końcu listy.'],
     ['⚡ ekstremalny ruch', 'cena zmieniła się o 40% lub więcej w 24h (pump/dump). Historia słabo opisuje takie sytuacje – ryzyko jest bardzo wysokie.'],
     ['Funding', 'opłata między longami i shortami na kontraktach. Dodatni = więcej chętnych na long (longi płacą), ujemny = przewaga shortów.'],
@@ -263,13 +263,13 @@ function RiskExample({ d }) {
 }
 
 const GUIDE = [
-  ['Co robi TradingJam?', 'To narzędzie statystyczne i edukacyjne. Co godzinę analizuje wykresy ok. 200 kryptowalut z Binance i BingX i pokazuje, jak w przeszłości kończyły się podobne sytuacje na wykresie – czyli jak często cena szła w górę (LONG) albo w dół (SHORT). Te same wyniki widzi każdy użytkownik; nie są dopasowane do niczyjej sytuacji.'],
+  ['Co robi TradingJam?', 'To narzędzie statystyczne i edukacyjne. Co godzinę analizuje wykresy ok. 400 kryptowalut z Binance i BingX i pokazuje, jak w przeszłości kończyły się podobne sytuacje na wykresie – czyli jak często cena szła w górę (LONG) albo w dół (SHORT). Te same wyniki widzi każdy użytkownik; nie są dopasowane do niczyjej sytuacji.'],
   ['LONG i SHORT', 'LONG = zarabiasz, gdy cena rośnie. SHORT = zarabiasz, gdy cena spada (dostępne na kontraktach, np. na BingX czy Binance Futures).'],
   ['Co znaczy „LONG 45%”?', 'Że w podobnych sytuacjach w przeszłości cena w 45 przypadkach na 100 najpierw doszła do celu, a dopiero potem (albo wcale) do stopu. To nie jest gwarancja. Czy 45% to dużo, zależy od rodzaju celu: przy układzie 2:1 to wynik powyżej progu opłacalności (33%), przy 1:1 – poniżej (50%).'],
   ['Cel i stop', 'Cel (take profit) – poziom ceny zamknięcia z zyskiem. Stop (stop loss) – poziom zamknięcia ze stratą, który ogranicza dalsze straty. W statystyce aplikacji oba poziomy są liczone automatycznie ze zmienności coina, żeby porównywać scenariusze w jednakowy sposób.'],
   ['Rodzaj celu: 2:1, 1:1 czy 1:2?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 Duży cel – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 Równy – zysk = strata, opłaca się powyżej 50%. 1:2 Bliski cel – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
-  ['„Brak przewagi” i „za krótka historia”', 'Zanim pokażemy procent, sprawdzamy model na przeszłości tego coina. Jeśli nie był trafniejszy niż zwykła statystyka – „brak przewagi”. Jeśli coin jest za młody, żeby to sprawdzić – „za krótka historia”. W obu przypadkach procent ma bardzo niską wiarygodność.'],
+  ['„Model tu nie działa” vs „Niesprawdzone”', 'Zanim pokażemy procent, robimy modelowi sprawdzian: każemy mu zgadywać ok. 1000 sytuacji z przeszłości coina, których nie widział, i liczymy trafienia.\n\n⚠ Model tu nie działa – sprawdzian się odbył i model wypadł nie lepiej niż zwykła średnia. Wiemy, że procent nic nie mówi. (Jak zawodnik, który rozegrał 1000 meczów i nie wygrywał częściej niż przeciętny.)\n\n⚠ Niesprawdzone (młody coin) – coin jest za krótko na giełdzie, żeby zrobić sprawdzian. Nie wiemy, czy procent jest coś wart. (Jak nowy zawodnik bez żadnego meczu.)\n\nW obu przypadkach nie sugeruj się procentem – dlatego takie coiny są wyszarzone i na końcu TOP 10.'],
   ['Czy aplikacja kieruje się średnią kroczącą?', 'Częściowo. Średnia krocząca (EMA 50 i nachylenie EMA 20) to 2 z 7 czynników. Pozostałe to RSI, wolumen, presja kupujących, delta wolumenu (CVD) i pozycja ceny w zakresie 20 świec. Model nie ma sztywnej reguły typu „cena pod średnią = sprzedawaj” – sprawdza, jak w historii danego coina kończyły się podobne układy wszystkich czynników razem. To oznacza, że wynik zależy od przeszłości coina, a nie od samego wykresu z ostatnich dni.'],
   ['⚠ Historia z jednego trendu', 'Gdy coin w całej swojej historii np. kilkukrotnie urósł, model „nauczył się”, że zwykle rośnie. Jeśli teraz cena wyraźnie spada, takich sytuacji w danych prawie nie ma – statystyka patrzy w lusterko wsteczne i może się kłócić z tym, co widać na wykresie. Dlatego pokazujemy wtedy ostrzeżenie i przesuwamy coin na koniec TOP 10. To samo działa w drugą stronę (coin, który głównie spadał, a teraz rośnie).'],
   ['⚡ Ekstremalny ruch', 'Coin zmienił cenę o 40% lub więcej w 24h (gwałtowny wzrost lub spadek). W takich sytuacjach historia słabo opisuje to, co się dzieje, więc statystyka jest niewiarygodna, a zmienność i ryzyko – wyjątkowo wysokie.'],
@@ -486,6 +486,7 @@ export default function App() {
   const [q, setQ] = useState('');
   const [exF, setExF] = useState('all');
   const [minP, setMinP] = useState('0');
+  const [shown, setShown] = useState(100);
   const [sortBy, setSortBy] = useState('p');
   const [busy, setBusy] = useState(false);
   const [catF, setCatF] = useState('all');
@@ -647,7 +648,7 @@ export default function App() {
             <Chips items={[['0', 'Każde %'], ['0.5', '≥ 50%'], ['0.6', '≥ 60%'], ['0.7', '≥ 70%']]} value={minP} onChange={setMinP} />
             <Chips items={[['p', 'Sortuj: prawdop.'], ['v', 'Wolumen'], ['c', 'Zmiana 24h']]} value={sortBy} onChange={setSortBy} />
             <Text style={[s.small, { marginVertical: 6 }]}>{filtered.length} coinów</Text>
-            {filtered.slice(0, 150).map(({ c, d, a }) => (
+            {filtered.slice(0, shown).map(({ c, d, a }) => (
               <TouchableOpacity key={c.ex + c.sym} onPress={() => setSel(c)} style={s.row}>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -663,6 +664,11 @@ export default function App() {
                 ) : <Text style={s.small}>brak danych</Text>}
               </TouchableOpacity>
             ))}
+            {filtered.length > shown ? (
+              <TouchableOpacity onPress={() => setShown(shown + 100)} style={[s.btn, { marginTop: 12 }]}>
+                <Text style={s.btnT}>Pokaż więcej ({filtered.length - shown})</Text>
+              </TouchableOpacity>
+            ) : null}
             {q.trim() && filtered.length === 0 ? (
               <TouchableOpacity onPress={analyzeOnDemand} disabled={busy} style={[s.btn, { marginTop: 12 }]}>
                 {busy ? <ActivityIndicator color={C.bg} /> : <Text style={s.btnT}>Przeanalizuj {q.trim().toUpperCase()} teraz</Text>}
