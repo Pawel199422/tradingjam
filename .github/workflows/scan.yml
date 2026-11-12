@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # pozwala uruchomić kolejny skan (łańcuch co godzinę)
 
 concurrency:
   group: skan
@@ -15,7 +16,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -36,3 +37,18 @@ jobs:
           git add results.json
           git commit -q -m "Skan $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
+
+      # GitHub często pomija automatyczny harmonogram w małych repozytoriach.
+      # Dlatego każdy skan sam uruchamia następny – o 1 minucie po kolejnej pełnej godzinie.
+      - name: Zaplanowanie kolejnego skanu
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          now=$(date -u +%s)
+          next=$(( (now / 3600 + 1) * 3600 + 60 ))
+          wait=$(( next - now ))
+          if [ $wait -gt 2700 ]; then wait=60; fi
+          echo "Czekam $wait s do kolejnego skanu"
+          sleep $wait
+          gh workflow run scan.yml --repo "$GITHUB_REPOSITORY" --ref main

@@ -366,8 +366,8 @@ function verdict(d, coin, a) {
   const pc = Math.round(d.p * 100), bc = Math.round(be * 100);
   if (isExtreme(coin)) return { level: 'avoid', text: 'Ekstremalna zmienność – cena zmieniła się o 40% lub więcej w 24h. Historia coina nie opisuje takiej sytuacji, statystyka jest tu niewiarygodna.' };
   if (a && a.regime) return { level: 'avoid', text: `Historia z jednego trendu – dane ${coin.base} pochodzą głównie z okresu silnych ${a.regime.dir === 'up' ? 'wzrostów' : 'spadków'}, a teraz cena idzie w drugą stronę. Statystyka (${d.dir} ${pc}%) może być mocno skrzywiona.` };
-  if (weakWhy(d) === 'short') return { level: 'none', text: 'Niesprawdzone – coin jest za młody, żeby przetestować model na jego historii. Nie wiadomo, czy ten procent jest coś wart.' };
-  if (weakWhy(d) === 'noedge') return { level: 'none', text: 'Sprawdzone: model tu nie działa – w teście na historii coina zgadywał nie lepiej niż zwykła średnia. Ten procent nic nie mówi.' };
+  if (weakWhy(d) === 'short') return { level: 'none', text: 'Za młody coin – nie da się sprawdzić, czy ten procent coś znaczy.' };
+  if (weakWhy(d) === 'noedge') return { level: 'none', text: 'Wykres nic tu nie mówi – ten procent nie jest lepszy od zwykłej średniej.' };
   if (d.p > be + 0.02) return { level: 'go', text: `Statystycznie: przewaga scenariusza ${d.dir} – ${pc}% przy progu opłacalności ${bc}%.` };
   if (d.p >= be - 0.005) return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – na granicy progu opłacalności ${bc}% (za mały zapas, by mówić o przewadze).` };
   return { level: 'weak', text: `Statystycznie: ${d.dir} ${pc}% – poniżej progu opłacalności ${bc}%.` };

@@ -107,24 +107,22 @@ const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
 // Ostrzeżenia: 'short' = za krótka historia do testu, 'noedge' = test nie wykazał przewagi
 const WHY = {
   short: {
-    title: '⚠ Niesprawdzone – coin za młody',
-    text: c => `Zanim pokażemy procent, sprawdzamy, czy model w ogóle umie przewidywać ruchy ${c.base}: każemy mu zgadywać ok. 1000 sytuacji z przeszłości, których nie widział, i liczymy trafienia. ${c.base} jest na giełdzie za krótko, więc takiego sprawdzianu nie dało się zrobić.\n\nCo to znaczy dla Ciebie: nie wiadomo, czy ten procent jest coś wart – może być trafny, może być przypadkowy. To jak nowy zawodnik, który nie rozegrał jeszcze żadnego meczu.`,
+    title: '⚠ Za młody coin – procent niesprawdzony',
+    text: (c) => `${c.base} jest na giełdzie za krótko, żeby sprawdzić, czy procenty z aplikacji w ogóle się u niego sprawdzają. Traktuj ten procent jak zgadywanie.`,
   },
   noedge: {
-    title: '⚠ Sprawdzone: model tu nie działa',
-    text: c => `Zanim pokażemy procent, sprawdzamy, czy model w ogóle umie przewidywać ruchy ${c.base}: każemy mu zgadywać ok. 1000 sytuacji z przeszłości, których nie widział, i liczymy trafienia. Sprawdzian się odbył – i model wypadł nie lepiej niż zwykła średnia (czyli „jak często ${c.base} w ogóle robi taki ruch”).\n\nCo to znaczy dla Ciebie: ten procent nic nie mówi o przyszłości. Wykres tego coina na tym horyzoncie jest „nieczytelny” dla statystyki – tak bywa zwłaszcza przy dużych, płynnych coinach. To jak zawodnik, który rozegrał 1000 meczów i nie wygrywał częściej niż przeciętny.`,
+    title: '⚠ Wykres nic tu nie mówi',
+    text: (c, d) => `Sprawdziliśmy to na historii ${c.base}: procenty z aplikacji trafiały nie lepiej, niż gdyby po prostu zawsze mówić „${d && d.hist != null ? pct0(d.hist) : 'średnio tyle samo'}” (tak często ${c.base} robi ten ruch zwykle). Analiza wykresu nic tu nie dodaje – nie sugeruj się tym procentem.`,
   },
 };
-const weakShort = why => (why === 'short' ? '⚠ niesprawdzone (młody coin)' : '⚠ model tu nie działa');
-function WeakNote({ coin, why, sides }) {
-  const [open, setOpen] = useState(false);
+const weakShort = why => (why === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi');
+function WeakNote({ coin, why, sides, d }) {
   if (!why) return null;
   const w = WHY[why];
   return (
     <View style={[s.box, { borderColor: C.warn, marginTop: 8 }]}>
       <Text style={{ color: C.warn, fontWeight: '800' }}>{w.title}{sides ? ` (${sides})` : ''}</Text>
-      {open ? <Text style={[s.li, { marginTop: 4 }]}>{w.text(coin)}</Text> : null}
-      <TouchableOpacity onPress={() => setOpen(!open)}><Text style={{ color: C.accent, marginTop: 4, fontSize: 12 }}>{open ? 'Zwiń' : 'Dlaczego?'}</Text></TouchableOpacity>
+      <Text style={[s.li, { marginTop: 4 }]}>{w.text(coin, d)}</Text>
     </View>
   );
 }
@@ -182,8 +180,8 @@ function Legend() {
     ['✓ powyżej progu', 'statystyka historyczna przekracza próg opłacalności dla wybranego rodzaju celu. Porównuj procent z progiem, a nie między trybami.'],
     ['normalnie 64%', 'jak często ten coin robi taki ruch bez względu na wykres. Liczy się różnica między tym a prognozą.'],
     ['trafność 71%', 'w teście na historii coina: gdy model dawał wysoką szansę, tyle razy faktycznie trafił.'],
-    ['⚠ model tu nie działa', 'model SPRAWDZILIŚMY na historii coina i zgadywał nie lepiej niż zwykła średnia. Procent nic nie mówi. Takie coiny są wyszarzone i na końcu listy.'],
-    ['⚠ niesprawdzone (młody coin)', 'coin jest za młody, żeby model w ogóle SPRAWDZIĆ. Nie wiadomo, czy procent jest coś wart. Też na końcu listy.'],
+    ['⚠ wykres nic tu nie mówi', 'sprawdziliśmy na historii coina: procent z aplikacji trafiał nie lepiej niż zwykła średnia. Nie sugeruj się nim. Takie coiny są wyszarzone i na końcu listy.'],
+    ['⚠ za młody coin', 'coin jest za krótko na giełdzie, żeby sprawdzić, czy procenty się u niego sprawdzają. Traktuj procent jak zgadywanie.'],
     ['🔄 Zmiana trendu', 'szansa, że w podanym czasie cena przetnie swoją średnią (EMA 50) w drugą stronę – czyli obecny trend zostanie przełamany. Pionowa kreska na pasku = jak często zdarza się to normalnie.'],
     ['⚠ 1 trend', 'historia coina to głównie jeden silny trend (np. wielokrotny wzrost), a teraz cena idzie w drugą stronę. Statystyka może być skrzywiona – coin jest na końcu listy.'],
     ['⚡ ekstremalny ruch', 'cena zmieniła się o 40% lub więcej w 24h (pump/dump). Historia słabo opisuje takie sytuacje – ryzyko jest bardzo wysokie.'],
@@ -270,7 +268,7 @@ const GUIDE = [
   ['Cel i stop', 'Cel (take profit) – poziom ceny zamknięcia z zyskiem. Stop (stop loss) – poziom zamknięcia ze stratą, który ogranicza dalsze straty. W statystyce aplikacji oba poziomy są liczone automatycznie ze zmienności coina, żeby porównywać scenariusze w jednakowy sposób.'],
   ['Rodzaj celu: 2:1, 1:1 czy 1:2?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 Duży cel – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 Równy – zysk = strata, opłaca się powyżej 50%. 1:2 Bliski cel – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
-  ['„Model tu nie działa” vs „Niesprawdzone”', 'Zanim pokażemy procent, robimy modelowi sprawdzian: każemy mu zgadywać ok. 1000 sytuacji z przeszłości coina, których nie widział, i liczymy trafienia.\n\n⚠ Model tu nie działa – sprawdzian się odbył i model wypadł nie lepiej niż zwykła średnia. Wiemy, że procent nic nie mówi. (Jak zawodnik, który rozegrał 1000 meczów i nie wygrywał częściej niż przeciętny.)\n\n⚠ Niesprawdzone (młody coin) – coin jest za krótko na giełdzie, żeby zrobić sprawdzian. Nie wiemy, czy procent jest coś wart. (Jak nowy zawodnik bez żadnego meczu.)\n\nW obu przypadkach nie sugeruj się procentem – dlatego takie coiny są wyszarzone i na końcu TOP 10.'],
+  ['„Wykres nic tu nie mówi” i „Za młody coin”', 'Każdy procent sprawdzamy na historii danego coina: czy w przeszłości trafiał lepiej niż zwykła średnia (np. „ten coin robi taki ruch w 37% przypadków”).\n\n⚠ Wykres nic tu nie mówi – sprawdziliśmy i procent z aplikacji nie był lepszy od średniej. Nie sugeruj się nim.\n\n⚠ Za młody coin – coin jest za krótko na giełdzie, żeby to sprawdzić. Procent to zgadywanie.\n\nTakie coiny są wyszarzone i na końcu TOP 10.'],
   ['Czy aplikacja kieruje się średnią kroczącą?', 'Częściowo. Średnia krocząca (EMA 50 i nachylenie EMA 20) to 2 z 7 czynników. Pozostałe to RSI, wolumen, presja kupujących, delta wolumenu (CVD) i pozycja ceny w zakresie 20 świec. Model nie ma sztywnej reguły typu „cena pod średnią = sprzedawaj” – sprawdza, jak w historii danego coina kończyły się podobne układy wszystkich czynników razem. To oznacza, że wynik zależy od przeszłości coina, a nie od samego wykresu z ostatnich dni.'],
   ['🔄 Zmiana trendu – co to jest?', 'Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii. Karta w szczegółach coina pokazuje, jak często w historii tego coina – w podobnym układzie wykresu – dochodziło do przełamania w podanym czasie, oraz na jakim poziomie ceny leży średnia. Im dalej cena od średniej (np. zaraz po dużym pumpie), tym zwykle mniejsza szansa na przełamanie w krótkim czasie. Przełamanie nie oznacza, że cena pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie.'],
   ['⚠ Historia z jednego trendu', 'Gdy coin w całej swojej historii np. kilkukrotnie urósł, model „nauczył się”, że zwykle rośnie. Jeśli teraz cena wyraźnie spada, takich sytuacji w danych prawie nie ma – statystyka patrzy w lusterko wsteczne i może się kłócić z tym, co widać na wykresie. Dlatego pokazujemy wtedy ostrzeżenie i przesuwamy coin na koniec TOP 10. To samo działa w drugą stronę (coin, który głównie spadał, a teraz rośnie).'],
@@ -375,7 +373,7 @@ function ScenarioCard({ coin, d, horizonTxt }) {
       <Text style={s.li}>Cel: {fmtPrice(d.target)} ({sgn(d.movePct)}) · Stop: {fmtPrice(d.stop)} ({sgn(d.stopPct)}) · w {horizonTxt}</Text>
       <Text style={s.small}>Przykład na każde 100 $ pozycji: cel <Text style={{ color: C.up }}>+{Math.abs(d.movePct).toFixed(2)} $</Text> · stop <Text style={{ color: C.down }}>−{Math.abs(d.stopPct).toFixed(2)} $</Text> (układ {E.MODE_RR[d.mode]})</Text>
       <Text style={s.small}>Normalnie {coin.base} robi taki ruch w {pct0(d.hist)} przypadków – teraz {d.p >= d.hist ? 'częściej' : 'rzadziej'} o {Math.abs((d.p - d.hist) * 100).toFixed(1)} pkt proc. Próg opłacalności: {pct0(breakEven(d))}.</Text>
-      {d.hiHit !== null && d.hiN >= 20
+      {!d.weak && d.hiHit !== null && d.hiN >= 20
         ? <Text style={s.small}>Test na historii: gdy model dawał {d.mode === 'safe' ? '≥65%' : d.mode === 'big' ? '≥40%' : 'mocny sygnał'}, trafiał w {pct1(d.hiHit)} przypadków ({d.hiN} razy w ostatnich {d.nVal} świecach).</Text>
         : null}
       {d.weak ? <Text style={[s.small, { color: C.warn }]}>{weakShort(E.weakWhy(d))}</Text> : null}
@@ -428,7 +426,7 @@ function TrendCard({ a, coin }) {
       </Text>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
         <Text style={[s.small, why ? { color: C.warn } : null]}>
-          {b.p !== null && b.prior !== null ? `normalnie ${pct0(b.prior)} = kreska na pasku` : ''}{why ? ` · ${why === 'short' ? '⚠ niesprawdzone' : '⚠ model tu nie działa'}` : ''}
+          {b.p !== null && b.prior !== null ? `normalnie ${pct0(b.prior)} = kreska na pasku` : ''}{why ? ` · ${why === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi'}` : ''}
         </Text>
         {toggle}
       </View>
@@ -481,8 +479,8 @@ function Detail({ coin, iv0, mode0, onBack }) {
           {(() => {
             const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
             const wl = E.weakWhy(L), ws = E.weakWhy(S);
-            return wl && wl === ws ? <WeakNote coin={coin} why={wl} />
-              : <>{wl ? <WeakNote coin={coin} why={wl} sides="LONG" /> : null}{ws ? <WeakNote coin={coin} why={ws} sides="SHORT" /> : null}</>;
+            return wl && wl === ws && wl === 'short' ? <WeakNote coin={coin} why={wl} />
+              : <>{wl ? <WeakNote coin={coin} why={wl} sides="LONG" d={L} /> : null}{ws ? <WeakNote coin={coin} why={ws} sides="SHORT" d={S} /> : null}</>;
           })()}
           {(() => {
             const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
@@ -679,7 +677,10 @@ export default function App() {
         contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
       >
-        <Text style={s.title}>TradingJam</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Image source={require('./assets/icon.png')} style={{ width: 34, height: 34, borderRadius: 9, borderWidth: 1, borderColor: C.line }} />
+          <Text style={[s.title, { letterSpacing: -0.5 }]}>tradingjam</Text>
+        </View>
         <Text style={s.small}>
           {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Statystyka'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
         </Text>
