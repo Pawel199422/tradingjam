@@ -193,18 +193,74 @@ async function bingxFunding() {
   return out;
 }
 
+// ---------- OKX (spot) ----------
+const OKX = 'https://www.okx.com';
+const OKX_BAR = { '1h': '1H', '4h': '4H', '1d': '1Dutc' };
+const OKX_MAX = 1500;      // OKX oddaje po 100 świec – ograniczamy historię, żeby nie przeciążać API
+let okxLast = 0; const OKX_GAP = 450;
+async function okxGet(path) {
+  for (let i = 0; i < 5; i++) {
+    const wait = okxLast + OKX_GAP - Date.now(); okxLast = Math.max(Date.now(), okxLast + OKX_GAP);
+    if (wait > 0) await sleep(wait);
+    const j = await http(OKX + path);
+    if (j && j.code === '0') return j.data;
+    const msg = String((j && j.msg) || (j && j.code) || '');
+    if (/too many|rate|limit/i.test(msg) || (j && j.code === '50011')) { await sleep(2000 * (i + 1)); continue; }
+    throw new Error('OKX: ' + msg);
+  }
+  throw new Error('OKX chwilowo ograniczył liczbę zapytań');
+}
+async function okxTickers() {
+  const d = await okxGet('/api/v5/market/tickers?instType=SPOT');
+  return (d || []).filter(t => /^[A-Z0-9]{2,20}-USDT$/.test(t.instId)).map(t => {
+    const last = +t.last, open = +t.open24h;
+    return { ex: 'okx', sym: t.instId, base: t.instId.split('-')[0], price: last, chg: open > 0 ? (last / open - 1) * 100 : 0, qv: +t.volCcy24h };
+  }).filter(t => !isJunk(t.base) && t.qv > 0 && isFinite(t.price));
+}
+async function okxKlines(sym, iv, total) {
+  const want = Math.min(total, OKX_MAX); const map = new Map(); let after = null;
+  while (map.size < want) {
+    const d = await okxGet(`/api/v5/market/history-candles?instId=${sym}&bar=${OKX_BAR[iv]}&limit=100` + (after ? `&after=${after}` : ''));
+    const rows = (d || []).map(x => [+x[0], +x[1], +x[2], +x[3], +x[4], +x[5]]);
+    if (!rows.length) break;
+    const before = map.size; let minT = Infinity;
+    for (const r of rows) { map.set(r[0], r); if (r[0] < minT) minT = r[0]; }
+    if (map.size === before || rows.length < 100) break;
+    after = minT;
+  }
+  const all = [...map.values()].sort((a, b) => a[0] - b[0]);
+  const k = { t: [], o: [], h: [], l: [], c: [], v: [], tb: [] };
+  for (const [t, o, h, l, c, v] of all) {
+    k.t.push(t); k.o.push(o); k.h.push(h); k.l.push(l); k.c.push(c); k.v.push(v);
+    k.tb.push(h > l ? v * (c - l) / (h - l) : v * 0.5); // OKX nie podaje wolumenu kupujących – szacunek
+  }
+  return k;
+}
+
 // ---------- Wspólne ----------
-const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : ex === 'bybit' ? bybitKlines(sym, iv, total) : binanceKlines(sym, iv, total));
+const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : ex === 'bybit' ? bybitKlines(sym, iv, total) : ex === 'okx' ? okxKlines(sym, iv, total) : binanceKlines(sym, iv, total));
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
 async function analyzeCoin(E, ticker, onProgress) {
-  const res = {}; let spark = []; let k4h = null; let err4h = null; let ageDays = null;
-  const NEED_DAYS = { '1h': 9, '4h': 34, '1d': 50 }; // ile dni historii potrzeba na dany horyzont
-  const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni' };
+  const res = {}; let spark = []; let k4h = null; let err4h = null; let ageDays = null; let k1d = null; let err1d = null;
+  const NEED_DAYS = { '1h': 9, '4h': 34, '1d': 50, '30d': 80 }; // ile dni historii potrzeba na dany horyzont
+  const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni', '30d': '30 dni' };
   const tooYoung = iv => ({ error: `Za młody coin: ${ticker.base} jest na giełdzie od ok. ${ageDays} dni. Na prognozę na ${HZ[iv]} potrzeba min. ok. ${NEED_DAYS[iv]} dni historii – statystyka pojawi się, gdy coin będzie starszy.`, young: true });
   for (const iv of Object.keys(E.CFG)) {
+    if (iv === '30d') {
+      // 30 dni: te same świece dzienne co 14 dni; młody coin → świece 4h
+      try {
+        if (k1d && k1d.c.length >= E.MIN_DAILY) res[iv] = E.compact(E.analyze(k1d, '30d'));
+        else if (k4h && k4h.c.length >= 300 + 180) res[iv] = E.compact(E.analyze(k4h, '30d4h'));
+        else if (err1d || err4h) res[iv] = { error: err1d || err4h };
+        else res[iv] = tooYoung(iv);
+      } catch (e) { res[iv] = { error: e.message || 'Błąd analizy' }; }
+      if (onProgress) onProgress(iv);
+      continue;
+    }
     try {
       const k = await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
+      if (iv === '1d') k1d = k;
       if (iv === '1h') { spark = k.c.slice(-48).map(x => +x.toPrecision(6)); if (k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5)); }
       if (iv === '4h') k4h = k;
       await sleep(0);
@@ -217,10 +273,10 @@ async function analyzeCoin(E, ticker, onProgress) {
         if (k.c.length < E.HISTORY && ageDays === null && k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5));
         res[iv] = tooYoung(iv);
       } else res[iv] = E.compact(E.analyze(k, iv));
-    } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; if (iv === '4h') err4h = res[iv].error; }
+    } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; if (iv === '4h') err4h = res[iv].error; if (iv === '1d') err1d = res[iv].error; }
     if (onProgress) onProgress(iv);
   }
   return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
 }
 
-module.exports = { stockLike, STOCK, bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };
+module.exports = { okxTickers, okxKlines, stockLike, STOCK, bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };

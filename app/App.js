@@ -21,11 +21,12 @@ const DONATE_NETWORK = 'BNB Smart Chain (BEP-20)';
 const DONATE_TOKEN = 'USDT';
 const LOCAL_BINANCE = 12, LOCAL_BINGX = 6; // skan na telefonie, gdy brak serwera
 
-const HORIZONS = [['1h', '24 godz.'], ['4h', '3 dni'], ['1d', '14 dni']];
+const HORIZONS = [['1h', '24 godz.'], ['4h', '3 dni'], ['1d', '14 dni'], ['30d', '30 dni']];
 const HORIZON_INFO = {
   '1h': 'Prognoza na najbliższe 24 godziny · liczona ze świec 1-godzinnych · krótki trading',
   '4h': 'Prognoza na najbliższe 3 dni · liczona ze świec 4-godzinnych · swing kilkudniowy',
   '1d': 'Prognoza na najbliższe 14 dni · liczona ze świec dziennych · pozycja na ok. 2 tygodnie',
+  '30d': 'Prognoza na najbliższe 30 dni · liczona ze świec dziennych · pozycja na ok. miesiąc, cel i stop dalej niż przy 14 dniach',
 };
 const catKey = c => c.cat || E.catOf(c.base);
 
@@ -80,7 +81,7 @@ const CatBadge = ({ coin }) => {
 };
 
 // ---------- Plakietki ----------
-const EX = { binance: ['Binance', '#f0b90b'], bingx: ['BingX', '#2a7cf6'], bybit: ['Bybit', '#f7a600'] };
+const EX = { binance: ['Binance', '#f0b90b'], bingx: ['BingX', '#2a7cf6'], okx: ['OKX', '#e6edf7'], bybit: ['Bybit', '#f7a600'] };
 const ExBadge = ({ ex, dim }) => {
   const [label, color] = EX[ex] || [ex, C.mute];
   return (
@@ -299,7 +300,7 @@ function RiskExample({ d }) {
 }
 
 const GUIDE = [
-  ['Co robi TradingJam?', 'To narzędzie statystyczne i edukacyjne. Co godzinę analizuje wykresy ok. 400 kryptowalut z Binance i BingX i pokazuje, jak w przeszłości kończyły się podobne sytuacje na wykresie – czyli jak często cena szła w górę (LONG) albo w dół (SHORT). Te same wyniki widzi każdy użytkownik; nie są dopasowane do niczyjej sytuacji.'],
+  ['Co robi TradingJam?', 'To narzędzie statystyczne i edukacyjne. Co godzinę analizuje wykresy ok. 450 kryptowalut z Binance, BingX i OKX i pokazuje, jak w przeszłości kończyły się podobne sytuacje na wykresie – czyli jak często cena szła w górę (LONG) albo w dół (SHORT). Te same wyniki widzi każdy użytkownik; nie są dopasowane do niczyjej sytuacji.'],
   ['LONG i SHORT', 'LONG = zarabiasz, gdy cena rośnie. SHORT = zarabiasz, gdy cena spada (dostępne na kontraktach, np. na BingX czy Binance Futures).'],
   ['Co znaczy „LONG 45%”?', 'Że w podobnych sytuacjach w przeszłości cena w 45 przypadkach na 100 najpierw doszła do celu, a dopiero potem (albo wcale) do stopu. To nie jest gwarancja. Czy 45% to dużo, zależy od rodzaju celu: przy układzie 2:1 to wynik powyżej progu opłacalności (33%), przy 1:1 – poniżej (50%).'],
   ['Cel i stop', 'Cel (take profit) – poziom ceny zamknięcia z zyskiem. Stop (stop loss) – poziom zamknięcia ze stratą, który ogranicza dalsze straty. W statystyce aplikacji oba poziomy są liczone automatycznie ze zmienności coina, żeby porównywać scenariusze w jednakowy sposób.'],
@@ -311,7 +312,7 @@ const GUIDE = [
   ['🔄 Zmiana trendu – co to jest?', 'Średnia krocząca (EMA 50) działa jak „linia trendu”: cena nad nią = trend wzrostowy, pod nią = spadkowy. Przełamanie trendu to zamknięcie świecy po drugiej stronie tej linii. Karta w szczegółach coina pokazuje, jak często w historii tego coina – w podobnym układzie wykresu – dochodziło do przełamania w podanym czasie, oraz na jakim poziomie ceny leży średnia. Im dalej cena od średniej (np. zaraz po dużym pumpie), tym zwykle mniejsza szansa na przełamanie w krótkim czasie. Przełamanie nie oznacza, że cena pójdzie dalej w nową stronę – to sygnał, że dotychczasowy trend słabnie.'],
   ['⚠ Historia z jednego trendu', 'Gdy coin w całej swojej historii np. kilkukrotnie urósł, model „nauczył się”, że zwykle rośnie. Jeśli teraz cena wyraźnie spada, takich sytuacji w danych prawie nie ma – statystyka patrzy w lusterko wsteczne i może się kłócić z tym, co widać na wykresie. Dlatego pokazujemy wtedy ostrzeżenie i przesuwamy coin na koniec TOP 10. To samo działa w drugą stronę (coin, który głównie spadał, a teraz rośnie).'],
   ['⚡ Ekstremalny ruch', 'Coin zmienił cenę o 40% lub więcej w 24h (gwałtowny wzrost lub spadek). W takich sytuacjach historia słabo opisuje to, co się dzieje, więc statystyka jest niewiarygodna, a zmienność i ryzyko – wyjątkowo wysokie.'],
-  ['Horyzonty', '24 godz. – krótki trading, szybkie ruchy, więcej przypadkowości. 3 dni – swing, dobry kompromis. 14 dni – dłuższe pozycje, większe ruchy w procentach.'],
+  ['Horyzonty', '24 godz. – krótki trading, szybkie ruchy, więcej przypadkowości. 3 dni – swing, dobry kompromis. 14 dni – dłuższe pozycje, większe ruchy w procentach. 30 dni – pozycja na ok. miesiąc: cel i stop są dalej (ok. 1,5× dalej niż przy 14 dniach), bo w miesiąc cena przechodzi większą drogę. Procent nie musi być wyższy niż przy krótszych horyzontach – dłuższy czas to też większy ruch potrzebny do celu.'],
   ['Kategorie', 'Memecoin – coiny „dla zabawy”, bardzo zmienne. AI – projekty sztucznej inteligencji. Layer 1/2 – blockchainy (np. ETH, SOL). DeFi – finanse zdecentralizowane. Gaming, RWA (realne aktywa), DePIN (infrastruktura), Token giełdy.'],
   ['Funding', 'Opłata na kontraktach między graczami. Dodatni = dużo osób gra na wzrost (tłok na longach), ujemny = przewaga shortów. Bardzo wysoki funding bywa sygnałem, że rynek jest przegrzany.'],
   ['Zarządzanie ryzykiem – podstawy (edukacyjnie)', 'Powszechnie opisywane w literaturze zasady: ograniczanie straty na jednej transakcji do niewielkiego procentu kapitału (często podaje się 1–2%), stosowanie zleceń stop loss, ostrożność z dźwignią (zwielokrotnia zarówno zyski, jak i straty) oraz świadomość, że każda strategia ma serie strat. To wiedza ogólna, a nie zalecenie dla Ciebie.'],
@@ -511,7 +512,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
       {!ok ? <Text style={[s.small, { marginTop: 12 }]}>{a && a.error ? errText(a.error) : 'Brak danych dla tego trybu – poczekaj na kolejny skan.'}</Text> : (
         <View>
           <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
-          {a.src === '4h' ? <Text style={s.small}>{coin.base} ma za krótką historię dzienną, więc prognoza 14 dni jest liczona ze świec 4-godzinnych.</Text> : null}
+          {a.src === '4h' ? <Text style={s.small}>{coin.base} ma za krótką historię dzienną, więc prognoza {a.horizonTxt} jest liczona ze świec 4-godzinnych.</Text> : null}
           <VerdictBox d={E.dirOf(a, mode)} coin={coin} a={a} />
           <MismatchNote coin={coin} a={a} mode={mode} />
           <RegimeNote coin={coin} a={a} />
@@ -641,6 +642,7 @@ export default function App() {
       const m = new Map();
       try { for (const t of await X.binanceTickers()) m.set('binance' + t.sym, t); } catch (e) { }
       try { for (const t of await X.bingxTickers()) m.set('bingx' + t.sym, t); } catch (e) { }
+      try { for (const t of await X.okxTickers()) m.set('okx' + t.sym, t); } catch (e) { }
       if (alive && m.size) { setLive(m); setLiveAt(new Date()); }
       // co 5 minut sprawdzamy, czy jest nowy skan – wtedy wczytuje się sam, bez odświeżania
       if (SERVER_ON && ++n % 5 === 0) {
@@ -721,7 +723,7 @@ export default function App() {
           <Text style={[s.title, { letterSpacing: -0.5 }]}>tradingjam</Text>
         </View>
         <Text style={s.small}>
-          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Statystyka'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
+          {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Statystyka'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX + OKX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
         </Text>
         {liveAt ? <Text style={s.small}><Text style={{ color: C.up }}>●</Text> Ceny na żywo · {liveAt.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} · statystyka odświeża się co godzinę</Text> : null}
         {age > 3 && data && data.source === 'server' ? <Text style={[s.small, { color: C.warn }]}>Wyniki mają ponad {Math.floor(age)} godz. – sprawdź, czy skaner na GitHubie działa.</Text> : null}
@@ -769,7 +771,7 @@ export default function App() {
           <View>
             <TextInput value={q} onChangeText={setQ} placeholder="Szukaj coina, np. PEPE" placeholderTextColor={C.mute}
               autoCapitalize="characters" autoCorrect={false} style={s.input} />
-            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)'], ...(bybitSet ? [['bybit', 'Też na Bybit']] : [])]} value={exF} onChange={setExF} />
+            <Chips items={[['all', 'Wszystkie giełdy'], ['binance', 'Binance'], ['bingx', 'BingX (lowcapy)'], ['okx', 'OKX'], ...(bybitSet ? [['bybit', 'Też na Bybit']] : [])]} value={exF} onChange={setExF} />
             {exF === 'bybit' ? <Text style={s.small}>Coiny dostępne także na Bybit. Statystyka jest liczona z danych Binance lub BingX – ceny na Bybit są zwykle bardzo zbliżone.</Text> : null}
             <Chips items={[['0', 'Każde %'], ['0.5', '≥ 50%'], ['0.6', '≥ 60%'], ['0.7', '≥ 70%']]} value={minP} onChange={setMinP} />
             <Chips items={[['p', 'Sortuj: prawdop.'], ['v', 'Wolumen'], ['c', 'Zmiana 24h']]} value={sortBy} onChange={setSortBy} />

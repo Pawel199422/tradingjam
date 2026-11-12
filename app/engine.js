@@ -7,10 +7,15 @@ const CFG = {
   '1h': { label: '1h', H: 24, m: 2, horizonTxt: '24 godz.' },
   '4h': { label: '4h', H: 18, m: 2, horizonTxt: '3 dni' },
   '1d': { label: '1D', H: 14, m: 2, horizonTxt: '14 dni' },
+  // 30 dni ze świec dziennych: cel/stop skalowane √(30/14) ≈ 1,46 – ruch realny na miesiąc
+  '30d': { label: '1D', H: 30, m: 2 * 1.46, horizonTxt: '30 dni', scale: 1.46, bars: '1d' },
 };
 // 14 dni ze świec 4h – dla coinów z krótką historią dzienną. 84 świece = 14 dni,
 // zmienność 4h × √6 ≈ zmienność dzienna, więc ruch skalujemy o 2,45.
-const ALT_CFG = { '1d4h': { label: '4h', H: 84, m: 2 * 2.45, horizonTxt: '14 dni', scale: 2.45 } };
+const ALT_CFG = {
+  '1d4h': { label: '4h', H: 84, m: 2 * 2.45, horizonTxt: '14 dni', scale: 2.45 },
+  '30d4h': { label: '4h', H: 180, m: 2 * 2.45 * 1.46, horizonTxt: '30 dni', scale: 2.45 * 1.46 },
+};
 const MIN_DAILY = 200; // min. liczba świec dziennych dla zwykłej prognozy 14 dni
 const VALID_N = 1000;    // ile ostatnich sytuacji do testu skuteczności
 const REFIT_EVERY = 200; // co ile świec model jest douczany w teście
