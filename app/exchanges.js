@@ -244,7 +244,7 @@ async function okxKlines(sym, iv, total) {
 const getKlines = (ex, sym, iv, total) => (ex === 'bingx' ? bingxKlines(sym, iv, total) : ex === 'bybit' ? bybitKlines(sym, iv, total) : ex === 'okx' ? okxKlines(sym, iv, total) : binanceKlines(sym, iv, total));
 
 // Pełna analiza jednego coina na wszystkich interwałach (używa silnika E)
-async function analyzeCoin(E, ticker, onProgress) {
+async function analyzeCoin(E, ticker, onProgress, opts = {}) {
   const res = {}; let spark = []; let k1h = null; let k4h = null; let err4h = null; let ageDays = null; let k1d = null; let err1d = null;
   const NEED_DAYS = { '1h': 9, '4h': 16, '1d': 50, '30d': 80 }; // ile dni historii potrzeba na dany horyzont
   const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni', '30d': '30 dni' };
@@ -283,7 +283,10 @@ async function analyzeCoin(E, ticker, onProgress) {
     } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; if (iv === '4h') err4h = res[iv].error; if (iv === '1d') err1d = res[iv].error; }
     if (onProgress) onProgress(iv);
   }
-  return { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
+  const out = { ...ticker, cat: E.catOf(ticker.base), est: ticker.ex !== 'binance', exs: [ticker.ex], spark, res };
+  // ścieżka ceny (świece 1h) do rozliczania historii wyników – tylko na żądanie skanera
+  if (opts.path && k1h) { const n = Math.min(k1h.t.length, 800); out._path = { t: k1h.t.slice(-n), h: k1h.h.slice(-n), l: k1h.l.slice(-n), c: k1h.c.slice(-n) }; }
+  return out;
 }
 
 module.exports = { okxTickers, okxKlines, stockLike, STOCK, bybitBases, bingxFunding, bybitTicker, bybitKlines, isJunk, binanceTickers, binanceTicker, binanceKlines, bingxTickers, bingxTicker, bingxKlines, getKlines, analyzeCoin, sleep };

@@ -19,6 +19,8 @@ const CONF = {
   CONCURRENCY: 2,                                  // równoległe coiny w jednym wątku
   TIME_LIMIT_MIN: +(process.env.TIME_LIMIT_MIN || 38), // zapas przed limitem joba
   OUT: process.env.OUT || path.join(__dirname, '..', 'out', 'results.json'),
+  HISTORY_IN: process.env.HISTORY_IN || null,     // lokalny plik historii (testy); domyślnie pobierana z gałęzi data
+  HISTORY_MAX_CLOSED: 3000,
 };
 
 // Kategorie z CoinGecko (darmowe API). Kolejność = priorytet przy konflikcie.
@@ -85,14 +87,28 @@ async function main() {
   for (let i = 0; i < Math.max(binance.length, bingx.length, okx.length); i++) { if (binance[i]) universe.push(binance[i]); if (bingx[i]) universe.push(bingx[i]); if (okx[i]) universe.push(okx[i]); }
   console.log(`Do analizy: ${binance.length} z Binance + ${bingx.length} z BingX + ${okx.length} z OKX`);
 
+  // ---------- Historia wyników: wczytanie poprzedniej ----------
+  let history = [];
+  try {
+    if (CONF.HISTORY_IN) history = fs.existsSync(CONF.HISTORY_IN) ? JSON.parse(fs.readFileSync(CONF.HISTORY_IN, 'utf8')) : [];
+    else if (process.env.GITHUB_REPOSITORY) {
+      const r = await fetch(`https://raw.githubusercontent.com/${process.env.GITHUB_REPOSITORY}/data/history.json?t=${Date.now()}`);
+      if (r.ok) history = await r.json();
+    }
+    if (!Array.isArray(history)) history = [];
+  } catch (e) { errors.push('Historia: ' + e.message); history = []; }
+  const pathKeys = new Set(history.filter(p => p.status === 'open').map(p => p.ex + p.sym));
+  const paths = new Map();
+  console.log(`Historia: ${history.length} wpisów, otwartych ${pathKeys.size} coinów`);
+
   // Wątki: każdy liczy swoją część listy (obliczenia modelu są ciężkie, więc dzielimy je na rdzenie)
   const coins = []; let done = 0, timedOut = false;
   const shards = Array.from({ length: CONF.THREADS }, () => []);
   universe.forEach((t, i) => shards[i % CONF.THREADS].push(t));
   await Promise.all(shards.map(list => new Promise(resolve => {
-    const w = new Worker(__filename, { workerData: { list, cg, funding, onBinance: [...onBinance], onBingx: [...onBingx], onOkx: [...onOkx], t0, limit: CONF.TIME_LIMIT_MIN, conc: CONF.CONCURRENCY } });
+    const w = new Worker(__filename, { workerData: { pathKeys: [...pathKeys], list, cg, funding, onBinance: [...onBinance], onBingx: [...onBingx], onOkx: [...onOkx], t0, limit: CONF.TIME_LIMIT_MIN, conc: CONF.CONCURRENCY } });
     w.on('message', m => {
-      if (m.coin) coins.push(m.coin);
+      if (m.coin) { if (m.coin._path) { paths.set(m.coin.ex + m.coin.sym, m.coin._path); delete m.coin._path; } coins.push(m.coin); }
       if (m.error) errors.push(m.error);
       if (m.timedOut) timedOut = true;
       if (m.tick) { done++; if (done % 25 === 0) console.log(`  ${done}/${universe.length} (${((Date.now() - t0) / 60000).toFixed(1)} min)`); }
@@ -101,6 +117,34 @@ async function main() {
     w.on('exit', resolve);
   })));
   if (timedOut) errors.push(`Limit czasu – przeanalizowano ${done}/${universe.length}`);
+
+  // ---------- Historia wyników: rozliczenie otwartych i dopisanie nowych ----------
+  const now = Date.now();
+  for (const key of pathKeys) {
+    if (paths.has(key)) continue; // coin wypadł z listy – pobieramy świece osobno
+    const pk = history.find(p => p.status === 'open' && p.ex + p.sym === key);
+    try { const k = await X.getKlines(pk.ex, pk.sym, '1h', 800); paths.set(key, { t: k.t, h: k.h, l: k.l, c: k.c }); } catch (e) { }
+  }
+  history = history.map(p => (p.status === 'open' ? E.resolvePick(p, paths.get(p.ex + p.sym), now) : p));
+  // Zbyt stare otwarte (brak danych > 3 dni po końcu) – zamykamy bez wyniku
+  history = history.map(p => (p.status === 'open' && now > p.end + 3 * 864e5 ? { ...p, status: 'expired', closedAt: p.end, r: 0, noData: true } : p));
+  let added = 0;
+  for (const iv of ['1h', '4h', '1d', '30d']) {
+    for (const r of E.rankTop(coins, iv, 'all', 10, 'big')) {
+      if (r.tier !== 0) continue; // tylko wiarygodne i powyżej progu
+      if (history.some(p => p.status === 'open' && p.ex === r.coin.ex && p.sym === r.coin.sym && p.iv === iv && p.dir === r.d.dir)) continue;
+      history.push({
+        id: `${now}-${iv}-${r.coin.ex}-${r.coin.sym}-${r.d.dir}`, t: now, end: now + E.HORIZON_MS[iv], iv, mode: 'big',
+        ex: r.coin.ex, sym: r.coin.sym, base: r.coin.base, dir: r.d.dir, p: +r.d.p.toFixed(3), hist: r.d.hist !== null ? +r.d.hist.toFixed(3) : null,
+        price: r.coin.res[iv].price, target: r.d.target, stop: r.d.stop, status: 'open',
+      });
+      added++;
+    }
+  }
+  const openH = history.filter(p => p.status === 'open');
+  const closedH = history.filter(p => p.status !== 'open').sort((a, b) => b.closedAt - a.closedAt).slice(0, CONF.HISTORY_MAX_CLOSED);
+  history = [...openH, ...closedH];
+  console.log(`Historia: +${added} nowych, otwartych ${openH.length}, zamkniętych ${closedH.length}`);
 
   const out = {
     version: 1,
@@ -112,6 +156,7 @@ async function main() {
   };
   fs.mkdirSync(path.dirname(CONF.OUT), { recursive: true });
   fs.writeFileSync(CONF.OUT, JSON.stringify(out));
+  fs.writeFileSync(path.join(path.dirname(CONF.OUT), 'history.json'), JSON.stringify(history));
   console.log(`Zapisano ${coins.length} coinów → ${CONF.OUT} (${(fs.statSync(CONF.OUT).size / 1024).toFixed(0)} KB, ${out.durationMin} min)`);
   if (errors.length) console.log('Ostrzeżenia:\n  ' + errors.slice(0, 10).join('\n  '));
   const catCount = {}; for (const c of coins) catCount[c.cat] = (catCount[c.cat] || 0) + 1;
@@ -125,6 +170,7 @@ async function main() {
 // Kod wątku roboczego
 async function workerMain() {
   const { list, cg, funding, t0, limit, conc } = workerData;
+  const pathKeys = new Set(workerData.pathKeys || []);
   const onBinance = new Set(workerData.onBinance), onBingx = new Set(workerData.onBingx), onOkx = new Set(workerData.onOkx || []);
   let next = 0;
   async function loop() {
@@ -132,7 +178,7 @@ async function workerMain() {
       if ((Date.now() - t0) / 60000 > limit) { parentPort.postMessage({ timedOut: true }); return; }
       const t = list[next++];
       try {
-        const c = await X.analyzeCoin(E, t);
+        const c = await X.analyzeCoin(E, t, null, { path: pathKeys.has(t.ex + t.sym) });
         c.cat = E.catOf(t.base, cg);
         { const f = funding[t.base] !== undefined ? funding[t.base] : funding[E.cleanBase(t.base)]; if (f !== undefined) c.funding = +f.toPrecision(4); }
         c.exs = [t.ex, onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx', onOkx.has(E.cleanBase(t.base)) && 'okx'].filter((x, i, arr) => x && arr.indexOf(x) === i);

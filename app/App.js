@@ -50,11 +50,34 @@ function fmtTime(iso) {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const C = {
-  bg: '#0b0f17', card: '#131a26', card2: '#1a2333', line: '#243045', text: '#e6edf7', mute: '#8a97ab',
-  up: '#22c55e', down: '#ef4444', side: '#94a3b8', accent: '#60a5fa', warn: '#f59e0b',
-  binance: '#f0b90b', bingx: '#2a7cf6',
+// Motywy kolorystyczne: czarny (w stylu giełd), ciemnoniebieski, biały
+const THEMES = {
+  black: {
+    name: 'Czarny', dark: true,
+    bg: '#0a0b0d', card: '#15171b', card2: '#1d2025', line: '#2a2e35', text: '#eaecef', mute: '#848e9c',
+    up: '#20b26c', down: '#ef454a', side: '#9aa3ae', accent: '#f7a600', warn: '#f0b90b', violet: '#a78bfa',
+  },
+  navy: {
+    name: 'Granatowy', dark: true,
+    bg: '#0b0f17', card: '#131a26', card2: '#1a2333', line: '#243045', text: '#e6edf7', mute: '#8a97ab',
+    up: '#22c55e', down: '#ef4444', side: '#94a3b8', accent: '#60a5fa', warn: '#f59e0b', violet: '#a78bfa',
+  },
+  white: {
+    name: 'Biały', dark: false,
+    bg: '#f4f5f7', card: '#ffffff', card2: '#f1f3f6', line: '#e1e4ea', text: '#14171c', mute: '#6b7280',
+    up: '#0f9d58', down: '#e0363c', side: '#6b7280', accent: '#2563eb', warn: '#c27803', violet: '#7c3aed',
+  },
 };
+const THEME_KEY = 'tj_theme_v1';
+const readTheme = () => { try { const t = localStorage.getItem(THEME_KEY); return THEMES[t] ? t : 'black'; } catch (e) { return 'black'; } };
+const saveTheme = t => { try { localStorage.setItem(THEME_KEY, t); } catch (e) { } };
+const C = { ...THEMES.black, binance: '#f0b90b', bingx: '#2a7cf6' };
+let themeNow = null;
+function applyTheme(t) {
+  if (themeNow === t) return;
+  Object.assign(C, THEMES[t]); themeNow = t; s = makeStyles();
+  try { if (typeof document !== 'undefined') { document.body.style.backgroundColor = C.bg; document.documentElement.style.backgroundColor = C.bg; } } catch (e) { }
+}
 const dirColor = d => (d === 'LONG' ? C.up : C.down);
 
 // ---------- Małe komponenty ----------
@@ -81,9 +104,9 @@ const CatBadge = ({ coin }) => {
 };
 
 // ---------- Plakietki ----------
-const EX = { binance: ['Binance', '#f0b90b'], bingx: ['BingX', '#2a7cf6'], okx: ['OKX', '#e6edf7'], bybit: ['Bybit', '#f7a600'] };
+const EX = { binance: ['Binance', '#d9a406'], bingx: ['BingX', '#2a7cf6'], okx: ['OKX', null], bybit: ['Bybit', '#e09600'] };
 const ExBadge = ({ ex, dim }) => {
-  const [label, color] = EX[ex] || [ex, C.mute];
+  const [label, c0] = EX[ex] || [ex, C.mute]; const color = c0 || C.text;
   return (
     <View style={[s.badge, { borderColor: color, opacity: dim ? 0.55 : 1 }]}>
       <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{label}</Text>
@@ -308,6 +331,8 @@ const GUIDE = [
   ['Ile możesz zarobić, a ile stracić (2:1, 1:1, 1:2)?', 'To stosunek zysku do ryzyka (risk/reward). 2:1 · duży zysk (ryzykujesz 10 $, możesz zarobić 20 $) – możliwy zysk jest 2× większy od możliwej straty; trafia rzadziej (zwykle 30–45%), ale opłaca się już powyżej 33%. 1:1 · po równo (10 $ na 10 $) – zysk = strata, opłaca się powyżej 50%. 1:2 · mały zysk (ryzykujesz 10 $, możesz zarobić 5 $) – zysk jest 2× mniejszy od straty; trafia często (60–80%), ale opłaca się dopiero powyżej 67%. Szansa i stosunek zysku do ryzyka zawsze idą w przeciwne strony – to matematyka. Liczy się nie sam procent, tylko to, o ile przekracza próg opłacalności.'],
   ['Próg opłacalności', 'Matematyczny punkt, przy którym wygrane i przegrane się równoważą (33% dla układu 2:1, 50% dla 1:1, 67% dla 1:2). „Powyżej progu” znaczy, że historyczna statystyka scenariusza była wyższa od tego punktu. Wyniki historyczne nie gwarantują wyników w przyszłości.'],
   ['„Wykres nic tu nie mówi” i „Za młody coin”', 'Każdy procent sprawdzamy na historii danego coina: czy w przeszłości trafiał lepiej niż zwykła średnia (np. „ten coin robi taki ruch w 37% przypadków”).\n\n⚠ Wykres nic tu nie mówi – sprawdziliśmy i procent z aplikacji nie był lepszy od średniej. Nie sugeruj się nim.\n\n⚠ Za młody coin – coin jest za krótko na giełdzie, żeby to sprawdzić. Procent to zgadywanie.\n\nTakie coiny są wyszarzone i na końcu TOP 10.'],
+  ['Zakładka „Wyniki” – czy to działa w praktyce?', 'Każdy scenariusz, który trafił do TOP 10 jako wiarygodny i powyżej progu (układ 2:1), zapisujemy w chwili skanu: coin, kierunek, cenę, cel i stop. Potem na prawdziwych cenach sprawdzamy, co było pierwsze – cel czy stop. W zakładce „Wyniki” widzisz, jaki procent celów faktycznie się trafiło i jaki byłby łączny wynik przy ryzyku 10 $ na każdy scenariusz. To uczciwy sprawdzian aplikacji – pokazujemy też wyniki słabe.'],
+  ['Jak zmienić kolory aplikacji?', 'Kółka w prawym górnym rogu ekranu głównego zmieniają motyw: czarny, granatowy albo biały. Wybór zapamiętuje się na tym urządzeniu.'],
   ['Jak powstaje TOP 10?', 'Dla każdego coina bierzemy mocniejszy scenariusz (LONG albo SHORT) na wybranym horyzoncie i rodzaju celu. Potem układamy listę w trzech grupach: 1) scenariusze, które przeszły test na historii coina i są powyżej progu opłacalności, 2) te, które przeszły test, ale są pod progiem, 3) coiny z ostrzeżeniem (wykres nic nie mówi, za młody coin, ekstremalny ruch, historia z jednego trendu, mały obrót). W każdej grupie decyduje przewaga nad normą: o ile punktów procentowych szansa jest teraz wyższa niż zwykle dla tego coina. Np. coin, który normalnie trafia w 27%, a teraz w 40% (+13 pkt), będzie wyżej niż coin z 38% przy normie 36% (+2 pkt) – bo tu obecny wykres naprawdę coś zmienia. Pod każdym coinem w TOP 10 jest linijka „Dlaczego tu”.'],
   ['Widzę trend wzrostowy, a LONG ma tylko 15–30%. Dlaczego?', 'Bo procent nie odpowiada na pytanie „czy cena wzrośnie?”, tylko: czy cena dojdzie do konkretnego celu, ZANIM dotknie stopu, w podanym czasie. Trend może trwać, a cena po drodze i tak wybije stop. Do tego w układzie 2:1 cel jest daleko, więc trafia rzadko – 30–40% to normalny wynik, a liczy się próg 33%. Wreszcie statystyka pochodzi z historii danego coina: jeśli w podobnych układach cena częściej wracała, niż szła dalej, procent będzie niski mimo trendu. W szczegółach coina, gdy procent „kłóci się” z trendem, aplikacja pokazuje ramkę z wyjaśnieniem dla tego konkretnego coina.'],
   ['Czy aplikacja kieruje się średnią kroczącą?', 'Częściowo. Średnia krocząca (EMA 50 i nachylenie EMA 20) to 2 z 7 czynników. Pozostałe to RSI, wolumen, presja kupujących, delta wolumenu (CVD) i pozycja ceny w zakresie 20 świec. Model nie ma sztywnej reguły typu „cena pod średnią = sprzedawaj” – sprawdza, jak w historii danego coina kończyły się podobne układy wszystkich czynników razem. To oznacza, że wynik zależy od przeszłości coina, a nie od samego wykresu z ostatnich dni.'],
@@ -424,7 +449,7 @@ function ScenarioCard({ coin, d, horizonTxt }) {
 }
 
 // Karta „Zmiana trendu” – szansa, że cena przetnie średnią EMA50 w drugą stronę
-const VIOLET = '#a78bfa';
+const violet = () => C.violet;
 function TrendCard({ a, coin }) {
   const [open, setOpen] = useState(false);
   const b = a.brk; if (!b) return null;
@@ -448,7 +473,7 @@ function TrendCard({ a, coin }) {
   const up = b.side === 'up';
   const dist = (b.level / a.price - 1) * 100;
   const why = b.p === null ? null : E.weakWhy(b);
-  const col = b.p === null || b.weak ? C.mute : VIOLET;
+  const col = b.p === null || b.weak ? C.mute : violet();
   return (
     <View style={[s.card, { borderColor: col }]}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -575,7 +600,92 @@ const CONSENT_KEY = 'tj_consent_v1';
 const readConsent = () => { try { return typeof localStorage !== 'undefined' && localStorage.getItem(CONSENT_KEY) === '1'; } catch (e) { return false; } };
 const saveConsent = () => { try { if (typeof localStorage !== 'undefined') localStorage.setItem(CONSENT_KEY, '1'); } catch (e) { } };
 
+function ThemePicker({ value, onChange }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+      {Object.entries(THEMES).map(([k, t]) => (
+        <TouchableOpacity key={k} onPress={() => onChange(k)} accessibilityLabel={`Motyw: ${t.name}`}
+          style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.bg, borderWidth: value === k ? 2 : 1, borderColor: value === k ? C.accent : C.line, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.accent }} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ---------- Historia wyników ----------
+const HISTORY_URL = RESULTS_URL.replace('results.json', 'history.json');
+const fmtDate = t => new Date(t).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+function Results() {
+  const [hist, setHist] = useState(null);
+  const [iv, setIv] = useState('1h');
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    if (!SERVER_ON) { setHist([]); return; }
+    fetch(HISTORY_URL + '?t=' + Date.now()).then(r => (r.ok ? r.json() : [])).then(j => setHist(Array.isArray(j) ? j : [])).catch(() => setErr('Nie udało się pobrać historii.'));
+  }, []);
+  if (err) return <Text style={[s.small, { color: C.down, marginTop: 12 }]}>{err}</Text>;
+  if (!hist) return <View style={{ marginTop: 20 }}><ActivityIndicator color={C.accent} /></View>;
+  const st = E.historyStats(hist, iv);
+  const closed = hist.filter(p => p.iv === iv && p.status !== 'open' && !p.noData).sort((a, b) => b.closedAt - a.closedAt);
+  const open = hist.filter(p => p.iv === iv && p.status === 'open').sort((a, b) => b.t - a.t);
+  const be = E.MODE_BE.big;
+  const money = st.sumR * 10;
+  return (
+    <View style={{ marginTop: 12 }}>
+      <Text style={s.h2}>Historia wyników</Text>
+      <Text style={s.small}>Każdy scenariusz, który trafił do TOP 10 jako wiarygodny i powyżej progu (układ 2:1 · duży zysk), zapisujemy w chwili skanu. Potem sprawdzamy na prawdziwych cenach, czy cena doszła najpierw do celu, czy do stopu. Tak widać, czy statystyka działa w praktyce, a nie tylko w teorii.</Text>
+      <Text style={s.label}>Horyzont</Text>
+      <Chips items={HORIZONS} value={iv} onChange={setIv} />
+      <View style={[s.card, { marginTop: 8 }]}>
+        {st.n === 0 ? (
+          <Text style={s.li}>Historia dopiero się zbiera. Pierwsze rozliczone scenariusze pojawią się po upływie horyzontu{iv === '1h' ? ' – ok. doba' : iv === '4h' ? ' – ok. 3 dni' : iv === '1d' ? ' – ok. 2 tygodnie' : ' – ok. miesiąc'} od pierwszego zapisu.{open.length ? ` W trakcie: ${open.length}.` : ''}</Text>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>Trafione cele</Text>
+              <Text style={{ color: st.hit !== null && st.hit > be ? C.up : C.down, fontWeight: '900', fontSize: 26 }}>{st.hit === null ? '–' : pct0(st.hit)}</Text>
+            </View>
+            <Text style={s.small}>{st.win} × cel ✓ · {st.loss} × stop ✗ · {st.exp} × czas minął · w trakcie: {st.open}</Text>
+            <Text style={s.small}>{st.hit === null ? 'Żaden scenariusz nie doszedł jeszcze ani do celu, ani do stopu.' : `Próg opłacalności przy 2:1 to ${pct0(be)} – wynik jest ${st.hit > be ? 'powyżej' : 'pod'} progiem.`}</Text>
+            <View style={[s.box, { borderColor: C.line, marginTop: 8 }]}>
+              <Text style={s.li}>Gdyby każdy z tych {st.n} scenariuszy rozegrać z ryzykiem 10 $ (stop = −10 $, cel = +20 $), łączny wynik wyniósłby <Text style={{ color: money >= 0 ? C.up : C.down, fontWeight: '800' }}>{money >= 0 ? '+' : '−'}{Math.abs(money).toFixed(0)} $</Text>.</Text>
+              <Text style={s.small}>Bez opłat giełdy i poślizgu cen. Wyniki historyczne nie gwarantują przyszłych.</Text>
+            </View>
+          </>
+        )}
+      </View>
+      {closed.length ? <Text style={s.h3}>Ostatnio rozliczone</Text> : null}
+      {closed.slice(0, 40).map(p => (
+        <View key={p.id} style={s.row}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+            <Text style={{ color: C.text, fontWeight: '700' }}>{p.base} <Text style={{ color: dirColor(p.dir) }}>{p.dir}</Text> <Text style={s.meta}>· {pct0(p.p)}</Text></Text>
+            <Text style={s.small}>{fmtDate(p.t)} → {fmtDate(p.closedAt)}</Text>
+          </View>
+          <Text style={{ color: p.status === 'win' ? C.up : p.status === 'loss' ? C.down : C.mute, fontWeight: '800' }}>
+            {p.status === 'win' ? `✓ cel +${p.r}R` : p.status === 'loss' ? '✗ stop −1R' : `– czas minął ${p.r >= 0 ? '+' : ''}${p.r}R`}
+          </Text>
+        </View>
+      ))}
+      {open.length ? <Text style={s.h3}>W trakcie ({open.length})</Text> : null}
+      {open.slice(0, 20).map(p => (
+        <View key={p.id} style={s.row}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+            <Text style={{ color: C.text, fontWeight: '700' }}>{p.base} <Text style={{ color: dirColor(p.dir) }}>{p.dir}</Text> <Text style={s.meta}>· {pct0(p.p)}</Text></Text>
+            <Text style={s.small}>od {fmtDate(p.t)} · koniec {fmtDate(p.end)}</Text>
+          </View>
+          <Text style={s.meta}>⏳</Text>
+        </View>
+      ))}
+      <Text style={[s.small, { marginTop: 12 }]}>R = jednostka ryzyka: stop to −1R, cel w układzie 2:1 to +2R. „Czas minął” = w podanym czasie cena nie doszła ani do celu, ani do stopu – liczymy wynik według ceny na koniec horyzontu.</Text>
+    </View>
+  );
+}
+
 export default function App() {
+  const [theme, setThemeState] = useState(readTheme());
+  applyTheme(theme);
+  const setTheme = t => { saveTheme(t); setThemeState(t); };
   const [consent, setConsent] = useState(readConsent());
   const [data, setData] = useState(null);        // { generatedAt, coins, source }
   const [extra, setExtra] = useState([]);        // coiny przeanalizowane na żądanie
@@ -710,7 +820,7 @@ export default function App() {
 
   if (sel) {
     return (
-      <SafeAreaView style={s.root}><StatusBar barStyle="light-content" />
+      <SafeAreaView style={s.root}><StatusBar barStyle={C.dark ? 'light-content' : 'dark-content'} />
         <Detail coin={(sel && coins.find(c => c.ex + c.sym === sel.ex + sel.sym)) || sel} iv0={iv} mode0={mode} onBack={() => setSel(null)} />
       </SafeAreaView>
     );
@@ -718,14 +828,15 @@ export default function App() {
 
   return (
     <SafeAreaView style={s.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={C.dark ? 'light-content' : 'dark-content'} />
       <ScrollView
         contentContainerStyle={s.page} keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Image source={require('./assets/icon.png')} style={{ width: 34, height: 34, borderRadius: 9, borderWidth: 1, borderColor: C.line }} />
-          <Text style={[s.title, { letterSpacing: -0.5 }]}>tradingjam</Text>
+          <Text style={[s.title, { letterSpacing: -0.5, flex: 1 }]}>tradingjam</Text>
+          <ThemePicker value={theme} onChange={setTheme} />
         </View>
         <Text style={s.small}>
           {data ? `${data.source === 'local' ? 'Skan z telefonu' : 'Statystyka'}: ${fmtTime(data.generatedAt)} · ${data.coins.length} coinów · Binance + BingX + OKX${bybitSet ? ' · oznaczone też na Bybit' : ''}` : 'Binance + BingX'}
@@ -740,13 +851,13 @@ export default function App() {
           </View>
         ) : null}
 
-        {tab !== 'guide' && tab !== 'support' ? (
+        {tab === 'top' || tab === 'all' ? (
           <TouchableOpacity onPress={() => setTab('guide')} style={[s.box, { borderColor: C.accent, marginTop: 10 }]}>
             <Text style={{ color: C.accent, fontWeight: '800' }}>📘 Pierwszy raz? Przeczytaj Poradnik (2 min)</Text>
             <Text style={s.small}>Dowiesz się, co znaczą procenty, cel, stop i próg opłacalności oraz jak czytać wyniki.</Text>
           </TouchableOpacity>
         ) : null}
-        {tab === 'guide' ? <Guide /> : tab === 'support' ? <Support /> : <>
+        {tab === 'guide' ? <Guide /> : tab === 'support' ? <Support /> : tab === 'results' ? <Results /> : <>
         <View style={{ marginTop: 12 }}>
           <Text style={s.label}>Horyzont prognozy</Text>
           <Chips items={HORIZONS} value={iv} onChange={setIv} />
@@ -814,9 +925,10 @@ export default function App() {
       </ScrollView>
 
       <View style={s.tabbar}>
-        {[['top', 'TOP 10'], ['all', 'Wszystkie'], ['guide', 'Poradnik'], ['support', '☕ Wesprzyj']].map(([k, t]) => (
+        {[['top', 'TOP 10'], ['all', 'Wszystkie'], ['results', 'Wyniki'], ['guide', 'Poradnik'], ['support', '☕']].map(([k, t]) => (
           <TouchableOpacity key={k} onPress={() => setTab(k)} style={s.tabBtn}>
-            <Text style={{ color: tab === k ? C.accent : C.mute, fontWeight: '700' }}>{t}</Text>
+            <Text style={{ color: tab === k ? C.accent : C.mute, fontWeight: '700', fontSize: 13 }}>{t}</Text>
+            {tab === k ? <View style={{ height: 2, width: 18, backgroundColor: C.accent, borderRadius: 1, marginTop: 4 }} /> : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -824,7 +936,7 @@ export default function App() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = () => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   page: { padding: 16, paddingTop: Platform.OS === 'android' ? 40 : 16, paddingBottom: 40 },
   title: { color: C.text, fontSize: 26, fontWeight: '800' },
@@ -835,7 +947,7 @@ const s = StyleSheet.create({
   small: { color: C.mute, fontSize: 12, marginTop: 3, lineHeight: 17 },
   meta: { color: C.mute, fontSize: 12 },
   li: { color: C.text, fontSize: 13, marginBottom: 5, lineHeight: 18 },
-  card: { backgroundColor: C.card, borderRadius: 14, padding: 14, marginTop: 10, borderWidth: 1, borderColor: C.line },
+  card: { backgroundColor: C.card, borderRadius: 12, padding: 14, marginTop: 10, borderWidth: 1, borderColor: C.dark ? C.line : C.line, ...(C.dark ? {} : { shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }) },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line },
   rank: { color: C.mute, fontSize: 18, fontWeight: '800', width: 30 },
   sym: { color: C.text, fontSize: 18, fontWeight: '800' },
@@ -843,11 +955,12 @@ const s = StyleSheet.create({
   dirPill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   dirPillT: { color: C.bg, fontWeight: '900', fontSize: 12 },
   badge: { borderWidth: 1, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1 },
-  chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.card2, borderWidth: 1, borderColor: C.line },
+  chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 8, backgroundColor: C.card2, borderWidth: 1, borderColor: C.line },
   chipOn: { backgroundColor: C.accent, borderColor: C.accent },
   input: { backgroundColor: C.card, color: C.text, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: C.line, marginTop: 12, marginBottom: 4 },
   btn: { backgroundColor: C.accent, borderRadius: 10, padding: 14, alignItems: 'center' },
   btnT: { color: C.bg, fontWeight: '800' },
   tabbar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.card },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  tabBtn: { flex: 1, alignItems: 'center', paddingTop: 12, paddingBottom: 10 },
 });
+let s = makeStyles();

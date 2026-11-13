@@ -450,4 +450,39 @@ function catOf(base, cg) {
   return STATIC_MAP[b] || (cg && cg[b]) || 'other';
 }
 
-module.exports = { rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+// ---------- Historia wyników: rozliczanie zapisanych scenariuszy ----------
+const HORIZON_MS = { '1h': 24 * 36e5, '4h': 72 * 36e5, '1d': 14 * 864e5, '30d': 30 * 864e5 };
+// path: świece 1h { t, h, l, c } (t = czas otwarcia). Pierwsze dotknięcie celu albo stopu;
+// gdy w jednej świecy padają oba – liczymy stop (ostrożnie). Po czasie bez rozstrzygnięcia – „expired”.
+function resolvePick(pk, path, now = Date.now()) {
+  if (!pk || pk.status !== 'open' || !path || !path.t) return pk;
+  const long = pk.dir === 'LONG';
+  let last = null;
+  for (let i = 0; i < path.t.length; i++) {
+    const t = path.t[i];
+    if (t < pk.t) continue;
+    if (t >= pk.end) break;
+    last = i;
+    const hitS = long ? path.l[i] <= pk.stop : path.h[i] >= pk.stop;
+    const hitT = long ? path.h[i] >= pk.target : path.l[i] <= pk.target;
+    if (hitS) return { ...pk, status: 'loss', closedAt: t + 36e5, r: -1 };
+    if (hitT) return { ...pk, status: 'win', closedAt: t + 36e5, r: +(Math.abs(pk.target - pk.price) / Math.abs(pk.price - pk.stop)).toFixed(2) };
+  }
+  const lastT = path.t.length ? path.t[path.t.length - 1] : 0;
+  if (now >= pk.end && lastT + 36e5 >= pk.end) {
+    const exit = last !== null ? path.c[last] : pk.price;
+    const r = ((long ? exit - pk.price : pk.price - exit) / Math.abs(pk.price - pk.stop));
+    return { ...pk, status: 'expired', closedAt: pk.end, r: +r.toFixed(2) };
+  }
+  return pk;
+}
+// Podsumowanie: liczba trafień i wynik w „jednostkach ryzyka” (R): cel 2:1 = +2R, stop = −1R
+function historyStats(list, iv) {
+  const cl = list.filter(p => p.iv === iv && p.status !== 'open' && !p.noData);
+  const win = cl.filter(p => p.status === 'win').length, loss = cl.filter(p => p.status === 'loss').length;
+  const exp = cl.length - win - loss;
+  const sumR = cl.reduce((a, p) => a + (p.r || 0), 0);
+  return { n: cl.length, win, loss, exp, open: list.filter(p => p.iv === iv && p.status === 'open').length, hit: win + loss ? win / (win + loss) : null, sumR };
+}
+
+module.exports = { HORIZON_MS, resolvePick, historyStats, rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
