@@ -342,6 +342,8 @@ function dirOf(a, mode = 'equal', side = null) {
   const mk = (dir, p, hist, target, stop, weak, skill, hiHit, hiN, nVal, md) => ({
     dir, p, hist, target, stop, weak, skill, hiHit, hiN, nVal, mode: md,
     movePct: (target / a.price - 1) * 100, stopPct: (stop / a.price - 1) * 100,
+    // cel lub stop poniżej 10% ceny (np. stop −141%) – ruchy zbyt duże na ten horyzont
+    tooWide: !(Math.min(target, stop) > a.price * 0.1),
   });
   if (mode === 'safe' || mode === 'big') {
     const S = a[mode]; if (!S) return null;
@@ -371,6 +373,7 @@ const weakWhy = d => (!d || !d.weak ? null : d.skill === null || d.skill === und
 
 // Opis statystyczny (neutralny – bez poleceń kupna/sprzedaży): { level, text }
 function verdict(d, coin, a) {
+  if (d && d.tooWide) return { level: 'avoid', text: `Za duże ruchy na ten horyzont – ${coin.base} zmienia się tak gwałtownie, że cel i stop wypadłyby poza sensowny zakres (stop poniżej zera). Tej statystyki nie da się tu uczciwie pokazać – sprawdź krótszy horyzont.` };
   if (!d) return { level: 'none', text: 'Brak danych.' };
   const be = MODE_BE[d.mode] || 0.5;
   const pc = Math.round(d.p * 100), bc = Math.round(be * 100);
@@ -398,7 +401,7 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
 }
 const liftOf = d => (d && d.p !== null && d.hist !== null && d.hist !== undefined ? d.p - d.hist : 0);
 function rankTier(r) {
-  if (r.d.weak || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime)) return 2;
+  if (r.d.weak || r.d.tooWide || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime)) return 2;
   return r.d.p > (MODE_BE[r.d.mode] || 0.5) + 0.02 ? 0 : 1;
 }
 // Krótki powód miejsca w TOP 10 (do wyświetlenia przy coinie)
@@ -406,7 +409,7 @@ function rankReason(r) {
   const lift = Math.round(liftOf(r.d) * 100);
   const liftTxt = lift > 0 ? `+${lift} pkt ponad normę` : lift < 0 ? `${lift} pkt poniżej normy` : 'na poziomie normy';
   if (r.tier === 2) {
-    const why = isExtreme(r.coin) ? '⚡ ekstremalny ruch' : r.a && r.a.regime ? '⚠ historia z jednego trendu' : isIlliquid(r.coin) ? '💧 mały obrót' : weakWhy(r.d) === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi';
+    const why = r.d.tooWide ? '⚠ za duże ruchy na ten horyzont' : isExtreme(r.coin) ? '⚡ ekstremalny ruch' : r.a && r.a.regime ? '⚠ historia z jednego trendu' : isIlliquid(r.coin) ? '💧 mały obrót' : weakWhy(r.d) === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi';
     return { good: false, text: `Na końcu listy: ${why}` };
   }
   if (r.tier === 0) return { good: true, text: `Dlaczego tu: ${liftTxt} · powyżej progu · test na historii zdany ✓` };

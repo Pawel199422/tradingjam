@@ -109,7 +109,7 @@ const aboveBE = d => !d.weak && d.p > breakEven(d) + 0.02;
 const WHY = {
   short: {
     title: '⚠ Za młody coin – procent niesprawdzony',
-    text: (c) => `${c.base} jest na giełdzie za krótko, żeby sprawdzić, czy procenty z aplikacji w ogóle się u niego sprawdzają. Traktuj ten procent jak zgadywanie.`,
+    text: (c, d, n) => `Skąd ten procent? Jak zawsze – z historii ${c.base}: w podobnych układach wykresu cena dochodziła do celu przed stopem w tylu przypadkach${d && d.hist != null ? ` (zwykle ${c.base} robi ten ruch w ${pct0(d.hist)} przypadków)` : ''}. Ale ${c.base} jest na giełdzie krótko${n ? ` (tylko ${n} świec)` : ''}, więc nie dało się sprawdzić, czy te procenty trafiają. Przy tak małej próbce wynik może być przypadkowy – traktuj go jako luźną wskazówkę, a nie pewną statystykę.`,
   },
   noedge: {
     title: '⚠ Wykres nic tu nie mówi',
@@ -117,13 +117,13 @@ const WHY = {
   },
 };
 const weakShort = why => (why === 'short' ? '⚠ za młody coin' : '⚠ wykres nic tu nie mówi');
-function WeakNote({ coin, why, sides, d }) {
+function WeakNote({ coin, why, sides, d, n }) {
   if (!why) return null;
   const w = WHY[why];
   return (
     <View style={[s.box, { borderColor: C.warn, marginTop: 8 }]}>
       <Text style={{ color: C.warn, fontWeight: '800' }}>{w.title}{sides ? ` (${sides})` : ''}</Text>
-      <Text style={[s.li, { marginTop: 4 }]}>{w.text(coin, d)}</Text>
+      <Text style={[s.li, { marginTop: 4 }]}>{w.text(coin, d, n)}</Text>
     </View>
   );
 }
@@ -185,7 +185,7 @@ function MismatchNote({ coin, a, mode }) {
   if (Math.abs(t) < 1) return null; // tylko wyraźny, widoczny na wykresie trend
   const up = t > 0;
   const d = E.dirOf(a, mode, up ? 'long' : 'short');
-  if (!d || d.p === null) return null;
+  if (!d || d.p === null || d.tooWide) return null;
   const be = E.MODE_BE[d.mode] || 0.5;
   if (!d.weak && d.p > be + 0.02 && !a.regime) return null; // procent zgadza się z trendem – nie ma czego tłumaczyć
   const dir = up ? 'LONG' : 'SHORT';
@@ -370,7 +370,7 @@ function Guide() {
 // ---------- Wiersz TOP 10 ----------
 function TopRow({ rank, row, horizonTxt, onPress }) {
   const { coin, d } = row;
-  const dim = d.weak || E.isExtreme(coin) || E.isIlliquid(coin) || !!(row.a && row.a.regime);
+  const dim = d.weak || d.tooWide || E.isExtreme(coin) || E.isIlliquid(coin) || !!(row.a && row.a.regime);
   const col = dim ? C.mute : dirColor(d.dir);
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[s.card, dim && { opacity: 0.75 }]}>
@@ -388,7 +388,7 @@ function TopRow({ rank, row, horizonTxt, onPress }) {
         </View>
       </View>
       <View style={{ marginTop: 8 }}><Sparkline data={coin.spark} h={24} /></View>
-      <Text style={[s.meta, { marginTop: 8 }]}>Cel {sgn(d.movePct)} ({fmtPrice(d.target)}) · Stop {sgn(d.stopPct)} · w {horizonTxt}</Text>
+      {d.tooWide ? null : <Text style={[s.meta, { marginTop: 8 }]}>Cel {sgn(d.movePct)} ({fmtPrice(d.target)}) · Stop {sgn(d.stopPct)} · w {horizonTxt}</Text>}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
         <Text style={s.meta}>normalnie {pct0(d.hist)}{d.hiHit !== null && d.hiN >= 20 ? ` · trafność ${pct0(d.hiHit)}` : ''}</Text>
         {d.weak
@@ -517,16 +517,18 @@ function Detail({ coin, iv0, mode0, onBack }) {
           <Text style={s.h3}>Scenariusze na {a.horizonTxt}</Text>
           {a.src ? <Text style={s.small}>{coin.base} jest młodym coinem (za mało dłuższych świec), więc prognoza {a.horizonTxt} jest liczona ze świec {a.src === '1h' ? '1-godzinnych' : '4-godzinnych'}.</Text> : null}
           <VerdictBox d={E.dirOf(a, mode)} coin={coin} a={a} />
-          <MismatchNote coin={coin} a={a} mode={mode} />
+          {E.dirOf(a, mode).tooWide ? null : <MismatchNote coin={coin} a={a} mode={mode} />}
           <RegimeNote coin={coin} a={a} />
           {(() => {
             const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
             const wl = E.weakWhy(L), ws = E.weakWhy(S);
-            return wl && wl === ws && wl === 'short' ? <WeakNote coin={coin} why={wl} />
-              : <>{wl ? <WeakNote coin={coin} why={wl} sides="LONG" d={L} /> : null}{ws ? <WeakNote coin={coin} why={ws} sides="SHORT" d={S} /> : null}</>;
+            if (L.tooWide || S.tooWide) return null;
+            return wl && wl === ws && wl === 'short' ? <WeakNote coin={coin} why={wl} n={a.nTrain} />
+              : <>{wl ? <WeakNote coin={coin} why={wl} sides="LONG" d={L} n={a.nTrain} /> : null}{ws ? <WeakNote coin={coin} why={ws} sides="SHORT" d={S} n={a.nTrain} /> : null}</>;
           })()}
           {(() => {
             const L = E.dirOf(a, mode, 'long'), S = E.dirOf(a, mode, 'short');
+            if (L.tooWide || S.tooWide) return null;
             const first = L.weak === S.weak ? (L.p >= S.p ? 'L' : 'S') : (L.weak ? 'S' : 'L');
             const cards = [<ScenarioCard key="L" coin={coin} d={L} horizonTxt={a.horizonTxt} />, <ScenarioCard key="S" coin={coin} d={S} horizonTxt={a.horizonTxt} />];
             return first === 'L' ? cards : cards.reverse();
@@ -536,7 +538,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
             <ProbBar label="Konsolidacja (żaden poziom)" p={a.probs.side} color={C.side} sub={`historycznie ${pct0(a.prior.side)}`} />
           ) : null}
 
-          <RiskExample d={E.dirOf(a, mode)} />
+          {E.dirOf(a, mode).tooWide ? null : <RiskExample d={E.dirOf(a, mode)} />}
 
           <Text style={s.h3}>Jak wygląda wykres ({a.label})</Text>
           {E.reasons(a.raw, coin.est).map((t, i) => <Text key={i} style={s.li}>• {t}</Text>)}
@@ -790,8 +792,8 @@ export default function App() {
                 </View>
                 {d ? (
                   <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' }}>
-                    <Text style={{ color: d.weak ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
-                    <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.weak ? weakShort(E.weakWhy(d)) : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
+                    <Text style={{ color: d.weak || d.tooWide ? C.mute : dirColor(d.dir), fontWeight: '800', fontSize: 16 }}>{d.dir} {pct0(d.p)}</Text>
+                    <Text style={[s.small, d.weak ? { color: C.warn } : aboveBE(d) ? { color: C.up } : null]}>{d.tooWide ? '⚠ za duże ruchy' : d.weak ? weakShort(E.weakWhy(d)) : `${aboveBE(d) ? '✓ ' : ''}cel ${sgn(d.movePct)} · stop ${sgn(d.stopPct)}`}</Text>
                   </View>
                 ) : <Text style={s.small}>brak danych</Text>}
               </TouchableOpacity>
