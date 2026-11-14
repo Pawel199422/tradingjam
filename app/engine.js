@@ -266,7 +266,11 @@ function analyze(k, iv) {
   let regime = null;
   if (hiC / c0 >= REGIME_X && r.trend < -0.5 && price < hiC * 0.7) regime = { dir: 'up', x: hiC / c0, fromTop: price / hiC - 1 };
   else if (loC / c0 <= 1 / REGIME_X && r.trend > 0.5 && price > loC * 1.4) regime = { dir: 'down', x: loC / c0, fromTop: price / loC - 1 };
+  // Średnie kroczące do pokazania (te same co na giełdach: MA5/10/30) + EMA używane przez model
+  const sma = nn => { let t = 0; for (let i = cur - nn + 1; i <= cur; i++) t += k.c[i]; return t / nn; };
+  const ma = cur >= 50 ? { ma5: sma(5), ma10: sma(10), ma30: sma(30), ema20: ema(k.c, 20)[cur], ema50: ema(k.c, 50)[cur] } : null;
   return {
+    ma,
     brk,
     regime,
     src: ALT_CFG[iv] ? ALT_CFG[iv].label : null,
@@ -324,6 +328,7 @@ function compact(a) {
   return {
     label: a.label, horizonTxt: a.horizonTxt, m: r4(a.m), price: sig(a.price), src: a.src || null,
     brk: a.brk ? (a.brk.side ? { side: a.brk.side, level: sig(a.brk.level), p: r4(a.brk.p), prior: r4(a.brk.prior), skill: r4(a.brk.skill), hiHit: r4(a.brk.hiHit), hiN: a.brk.hiN || 0, weak: a.brk.p === null || a.brk.p === undefined ? true : a.brk.weak, nHist: a.brk.nHist } : { side: null }) : null,
+    ma: a.ma ? { ma5: sig(a.ma.ma5), ma10: sig(a.ma.ma10), ma30: sig(a.ma.ma30), ema20: sig(a.ma.ema20), ema50: sig(a.ma.ema50) } : null,
     regime: a.regime ? { dir: a.regime.dir, x: r4(a.regime.x), fromTop: r4(a.regime.fromTop) } : null,
     probs: { up: r4(a.probs.up), down: r4(a.probs.down), side: r4(a.probs.side) },
     prior: { up: r4(a.prior.up), down: r4(a.prior.down), side: r4(a.prior.side) },

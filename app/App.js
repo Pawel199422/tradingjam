@@ -230,6 +230,28 @@ function MismatchNote({ coin, a, mode }) {
   );
 }
 
+// Średnie kroczące jak na giełdzie (MA5/10/30) + EMA20/50 używane przez model
+function MaBox({ a }) {
+  const m = a.ma; if (!m) return null;
+  const p = a.price;
+  const above = [m.ma5, m.ma10, m.ma30].filter(x => p > x).length;
+  const upOrder = m.ma5 > m.ma10 && m.ma10 > m.ma30, downOrder = m.ma5 < m.ma10 && m.ma10 < m.ma30;
+  const verdict = above === 3 && upOrder ? ['wzrostowy', C.up, 'cena nad wszystkimi średnimi, MA5 > MA10 > MA30']
+    : above === 0 && downOrder ? ['spadkowy', C.down, 'cena pod wszystkimi średnimi, MA5 < MA10 < MA30']
+    : above === 0 ? ['raczej spadkowy', C.down, 'cena pod wszystkimi średnimi, ale średnie nie są jeszcze ułożone po kolei']
+    : above === 3 ? ['raczej wzrostowy', C.up, 'cena nad wszystkimi średnimi, ale średnie nie są jeszcze ułożone po kolei']
+    : ['mieszany', C.mute, `cena nad ${above} z 3 średnich – brak wyraźnego kierunku`];
+  const svc = a.label === '1D' ? '1d' : a.label;
+  return (
+    <View style={[s.box, { borderColor: C.line, marginTop: 8 }]}>
+      <Text style={{ color: C.text, fontWeight: '800' }}>📈 Średnie kroczące (świece {svc}) – jak na giełdzie</Text>
+      <Text style={[s.li, { marginTop: 4 }]}>MA5 {fmtPrice(m.ma5)} · MA10 {fmtPrice(m.ma10)} · MA30 {fmtPrice(m.ma30)}</Text>
+      <Text style={s.li}>Układ: <Text style={{ color: verdict[1], fontWeight: '700' }}>{verdict[0]}</Text> – {verdict[2]} (cena {fmtPrice(p)} na zamknięciu ostatniej świecy).</Text>
+      <Text style={s.small}>Model aplikacji korzysta z EMA 20 ({fmtPrice(m.ema20)}) i EMA 50 ({fmtPrice(m.ema50)}) – to 2 z 7 czynników. Na giełdzie zobaczysz je pod wykresem w zakładce EMA (okresy 20 i 50, świece {svc}).</Text>
+    </View>
+  );
+}
+
 function Legend() {
   const [open, setOpen] = useState(false);
   const items = [
@@ -567,6 +589,7 @@ function Detail({ coin, iv0, mode0, onBack }) {
 
           <Text style={s.h3}>Jak wygląda wykres ({a.label})</Text>
           {E.reasons(a.raw, coin.est).map((t, i) => <Text key={i} style={s.li}>• {t}</Text>)}
+          <MaBox a={a} />
           <FactorsBox />
           {coin.est ? <Text style={s.small}>Ta giełda nie udostępnia wolumenu kupujących – presja jest szacowana z położenia zamknięcia w świecy.</Text> : null}
           <Text style={s.small}>Model wytrenowany na {a.nTrain} świecach {coin.base} ({a.label}), osobno dla każdego coina, interwału i kierunku.</Text>
