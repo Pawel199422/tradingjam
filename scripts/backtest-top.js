@@ -22,7 +22,7 @@ function labels(k, raw, H) {
   return { L: I.outcomes(k, raw, H, tg, st), S: I.outcomes(k, raw, H, st, tg).map(y => (y === null ? null : -y)) };
 }
 // walk-forward per coin: zwraca dla punktów testu p, prior (z przeszłości) i wynik
-function walk(Z, Y, lab, H, l2) {
+function walk(Z, Y, lab, H, l2, btcAt) {
   const out = []; if (lab.length < 500) return out;
   const vs = lab.slice(Math.max(300 + H, lab.length - VALID_N));
   let model = null, fittedAt = -Infinity, bm = 0, bb = 0, n = 0;
@@ -30,7 +30,7 @@ function walk(Z, Y, lab, H, l2) {
     if (t - fittedAt >= REFIT) { model = I.fitModel(Z, Y, lab.filter(i => i <= t - H), model && model.W, l2); fittedAt = t; }
     const p = I.predictP(model, Z[t]);
     const rskill = n >= 100 && bb > 0 ? 1 - bm / bb : null;
-    out.push({ i: t, p: p[0], prior: model.prior[0], y: Y[t], rskill });
+    out.push({ i: t, p: p[0], prior: model.prior[0], y: Y[t], rskill, bt: btcAt ? btcAt(t) : null });
     // skill liczony tylko z wcześniejszych punktów testu (bez zaglądania w przyszłość)
     if (t + H <= vs[vs.length - 1]) { bm += I.brier(p, Y[t]); bb += I.brier(model.prior, Y[t]); n++; }
   }
@@ -38,16 +38,19 @@ function walk(Z, Y, lab, H, l2) {
 }
 async function worker() {
   const H = E.CFG[IV].H; const btcCtx = E.btcContext(workerData.btc);
+  // trend BTC (odległość od EMA50 w ATR) w chwili danej świecy coina
+  const btcAtFor = k => { let j = 0; return i => { while (j + 1 < btcCtx.t.length && btcCtx.t[j + 1] <= k.t[i]) j++; if (btcCtx.t[j] > k.t[i]) j = 0; return btcCtx.t[j] <= k.t[i] ? btcCtx.v[j][0] : null; }; };
   for (const t of workerData.list) {
     try {
       const k = await X.getKlines(t.ex, t.sym, IV, E.HISTORY);
       if (k.c.length < 900) continue;
       const k4 = IV === '1h' ? await X.getKlines(t.ex, t.sym, '4h', 1200) : null;
       const recs = {};
+      const fAt = btcAtFor(k); const btArr = k.t.map((_, i) => fAt(i)); const bAt = i => btArr[i];
       const run = (name, Z, raw, l2) => {
         const Y = labels(k, raw, H); const lab = Y => { const a = []; for (let i = 0; i < k.c.length - 1 - H; i++) if (Z[i] && Y[i] !== null) a.push(i); return a; };
         const lL = lab(Y.L), lS = lab(Y.S);
-        recs[name] = { L: walk(Z, Y.L, lL, H, l2).map(r => ({ ...r, t: k.t[r.i] })), S: walk(Z, Y.S, lS, H, l2).map(r => ({ ...r, t: k.t[r.i] })) };
+        recs[name] = { L: walk(Z, Y.L, lL, H, l2, bAt).map(r => ({ ...r, t: k.t[r.i] })), S: walk(Z, Y.S, lS, H, l2, bAt).map(r => ({ ...r, t: k.t[r.i] })) };
         return { Y, lL, lS };
       };
       const base = features(k); const b = run('base', base.Z, base.raw, 0.3);
@@ -153,6 +156,9 @@ async function main() {
   const byLift = (a, b) => b.lift - a.lift || b.p - a.p;
   const byP = (a, b) => b.p - a.p;
   const passed = x => x.rskill !== null && x.rskill > 0;
+  const top = x => x.rskill !== null && x.rskill >= 0.01 && x.p > BE + 0.02 && x.lift >= 0.05;
+  const against = x => x.bt !== null && x.bt !== undefined && ((x.side === 'L' && x.bt < -0.5) || (x.side === 'S' && x.bt > 0.5));
+  const withBtc = x => x.bt !== null && x.bt !== undefined && ((x.side === 'L' && x.bt > 0.5) || (x.side === 'S' && x.bt < -0.5));
   const rules = {
     'APLIKACJA (test zdany, p>próg, wg przewagi)': { filter: x => passed(x) && x.p > BE + 0.02, sort: byLift, top: 10 },
     'jw. ale wg procentu': { filter: x => passed(x) && x.p > BE + 0.02, sort: byP, top: 10 },
@@ -163,13 +169,17 @@ async function main() {
     'TOP 5 zamiast 10': { filter: x => passed(x) && x.p > BE + 0.02, sort: byLift, top: 5 },
     'p ≥ 45%': { filter: x => passed(x) && x.p >= 0.45, sort: byLift, top: 10 },
     'przewaga ≥5 pkt + skill ≥1%': { filter: x => x.rskill !== null && x.rskill >= 0.01 && x.p > BE + 0.02 && x.lift >= 0.05, sort: byLift, top: 10 },
+    'NOWY TOP (≥5 pkt + skill ≥1%)': { filter: top, sort: byLift, top: 10 },
+    'NOWY TOP bez scenariuszy pod prąd BTC': { filter: x => top(x) && !against(x), sort: byLift, top: 10 },
+    'NOWY TOP tylko zgodnie z BTC': { filter: x => top(x) && withBtc(x), sort: byLift, top: 10 },
+    'APLIKACJA bez pod prąd BTC': { filter: x => passed(x) && x.p > BE + 0.02 && !against(x), sort: byLift, top: 10 },
     'przewaga ≥6 pkt': { filter: x => passed(x) && x.p > BE + 0.02 && x.lift >= 0.06, sort: byLift, top: 10 },
   };
   console.log('\nTryb 2:1 · próg opłacalności 33% · wynik R: cel +2, stop −1, brak rozstrzygnięcia 0');
   for (const [vn, cr] of Object.entries(variants)) {
     console.log(`\n=== MODEL: ${vn} ===`);
     for (const [rn, rule] of Object.entries(rules)) {
-      if (vn !== 'base' && !/^APLIKACJA|≥5 pkt|≥6 pkt|≥8 pkt|≥1%/.test(rn)) continue;
+      if (!/^NOWY TOP|^APLIKACJA/.test(rn)) continue;
       const r = simulate(cr, rule, H);
       console.log(`${rn.padEnd(46)} scenariuszy ${String(r.n).padStart(5)} | trafione ${(r.hit * 100).toFixed(1)}% | średnio ${r.avgR >= 0 ? '+' : ''}${r.avgR.toFixed(3)}R`);
     }
