@@ -27,6 +27,10 @@ jobs:
       - name: Skanowanie Binance + BingX
         run: node scanner/scanner.js
 
+      - name: Bot na sucho (wirtualne konto)
+        continue-on-error: true
+        run: node bot/paper.js
+
       - name: Publikacja wyników (gałąź "data")
         run: |
           cd out
@@ -35,6 +39,7 @@ jobs:
           git config user.email "skaner-bot@users.noreply.github.com"
           git checkout -q -b data
           git add results.json history.json
+          if [ -f bot.json ]; then git add bot.json; fi
           git commit -q -m "Skan $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
 

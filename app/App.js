@@ -722,11 +722,69 @@ function Results() {
   );
 }
 
+// ---------- Mój bot (na sucho) – ukryty ekran pod adresem …/#bot ----------
+const BOT_URL = RESULTS_URL.replace('results.json', 'bot.json');
+function BotScreen({ onBack }) {
+  const [b, setB] = useState(null); const [err, setErr] = useState(null);
+  useEffect(() => {
+    fetch(BOT_URL + '?t=' + Date.now()).then(r => (r.ok ? r.json() : null)).then(j => (j ? setB(j) : setErr('Bot jeszcze nie ma danych – pojawią się po najbliższym skanie.'))).catch(() => setErr('Nie udało się pobrać danych bota.'));
+  }, []);
+  const back = <TouchableOpacity onPress={onBack}><Text style={{ color: C.accent, fontSize: 16 }}>‹ Wróć do aplikacji</Text></TouchableOpacity>;
+  if (err) return <ScrollView contentContainerStyle={s.page}>{back}<Text style={[s.small, { marginTop: 12 }]}>{err}</Text></ScrollView>;
+  if (!b) return <View style={{ marginTop: 40 }}><ActivityIndicator color={C.accent} /></View>;
+  const cfg = b.cfg || {}; const last = b.equity.length ? b.equity[b.equity.length - 1] : [0, b.balance, b.balance];
+  const eq = last[2]; const chg = (eq / cfg.startBalance - 1) * 100;
+  const wins = b.closed.filter(c => c.net > 0).length, n = b.closed.length;
+  const sumNet = b.closed.reduce((a, c) => a + c.net, 0), fees = b.closed.reduce((a, c) => a + (c.fees || 0), 0);
+  const days = Math.max(1, (Date.now() - b.startedAt) / 864e5);
+  return (
+    <ScrollView contentContainerStyle={s.page}>
+      {back}
+      <Text style={[s.title, { marginTop: 10 }]}>🤖 Mój bot</Text>
+      <Text style={s.small}>Tryb: <Text style={{ color: C.warn, fontWeight: '800' }}>NA SUCHO</Text> – wirtualne konto, prawdziwe ceny BingX, z opłatami i poślizgiem. Od {fmtDate(b.startedAt)} ({days.toFixed(0)} dni) · aktualizacja {fmtDate(b.updatedAt)}</Text>
+      <View style={s.card}>
+        <Text style={s.meta}>Saldo konta (z otwartymi pozycjami)</Text>
+        <Text style={{ color: C.text, fontSize: 30, fontWeight: '900' }}>{eq.toFixed(2)} USDT</Text>
+        <Text style={{ color: chg >= 0 ? C.up : C.down, fontWeight: '800' }}>{chg >= 0 ? '+' : ''}{chg.toFixed(2)}% od startu ({cfg.startBalance} USDT)</Text>
+        <View style={{ marginTop: 10 }}><Sparkline data={b.equity.map(e => e[2])} h={60} /></View>
+      </View>
+      <View style={s.card}>
+        <Text style={s.li}>Zamknięte transakcje: <Text style={{ fontWeight: '800' }}>{n}</Text> · na plus: {wins} ({n ? pct0(wins / n) : '–'})</Text>
+        <Text style={s.li}>Wynik zamkniętych: <Text style={{ color: sumNet >= 0 ? C.up : C.down, fontWeight: '800' }}>{sumNet >= 0 ? '+' : ''}{sumNet.toFixed(2)} USDT</Text> · w tym opłaty i poślizg: −{fees.toFixed(2)} USDT</Text>
+        <Text style={s.small}>Zasady: ryzyko {(cfg.riskPct * 100).toFixed(0)}% salda na pozycję · maks. {cfg.maxOpen} pozycji · dźwignia łącznie maks. {cfg.maxLeverage}× · po stracie {(cfg.dailyLossPct * 100).toFixed(0)}% w ciągu dnia – przerwa do jutra · tylko zielone scenariusze z TOP 10 (24 godz. i 3 dni).</Text>
+      </View>
+      <Text style={s.h3}>Otwarte pozycje ({b.positions.length})</Text>
+      {b.positions.length ? b.positions.map(p => (
+        <View key={p.id} style={s.row}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+            <Text style={{ color: C.text, fontWeight: '700' }}>{p.base} <Text style={{ color: dirColor(p.side) }}>{p.side}</Text> <Text style={s.meta}>· {p.iv === '1h' ? '24 godz.' : '3 dni'}</Text></Text>
+            <Text style={s.small}>wejście {fmtPrice(p.entry)} · cel {fmtPrice(p.target)} · stop {fmtPrice(p.stop)}</Text>
+            <Text style={s.small}>od {fmtDate(p.openedAt)} · koniec {fmtDate(p.end)} · ryzyko {p.risk.toFixed(2)} USDT</Text>
+          </View>
+        </View>
+      )) : <Text style={s.small}>Brak – bot czeka na zielone scenariusze.</Text>}
+      <Text style={s.h3}>Ostatnie zamknięte</Text>
+      {b.closed.length ? b.closed.slice(0, 30).map(c => (
+        <View key={c.id + c.closedAt} style={s.row}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 10 }}>
+            <Text style={{ color: C.text, fontWeight: '700' }}>{c.base} <Text style={{ color: dirColor(c.side) }}>{c.side}</Text> <Text style={s.meta}>· {c.reason}</Text></Text>
+            <Text style={s.small}>{fmtDate(c.openedAt)} → {fmtDate(c.closedAt)}</Text>
+          </View>
+          <Text style={{ color: c.net >= 0 ? C.up : C.down, fontWeight: '800' }}>{c.net >= 0 ? '+' : ''}{c.net.toFixed(2)} $</Text>
+        </View>
+      )) : <Text style={s.small}>Jeszcze żadna pozycja się nie zamknęła.</Text>}
+      <Text style={s.h3}>Dziennik</Text>
+      {(b.log || []).slice(0, 20).map((l, i) => <Text key={i} style={s.small}>{l}</Text>)}
+    </ScrollView>
+  );
+}
+
 export default function App() {
   const [theme, setThemeState] = useState(readTheme());
   applyTheme(theme);
   const setTheme = t => { saveTheme(t); setThemeState(t); };
   const [consent, setConsent] = useState(readConsent());
+  const [botView, setBotView] = useState(() => { try { return typeof location !== 'undefined' && location.hash === '#bot'; } catch (e) { return false; } });
   const [data, setData] = useState(null);        // { generatedAt, coins, source }
   const [extra, setExtra] = useState([]);        // coiny przeanalizowane na żądanie
   const [status, setStatus] = useState('');      // komunikat ładowania
@@ -857,6 +915,7 @@ export default function App() {
   const age = data && data.generatedAt ? (Date.now() - new Date(data.generatedAt)) / 36e5 : 0;
 
   if (!consent) return <Consent onAccept={() => { saveConsent(); setConsent(true); }} />;
+  if (botView) return <SafeAreaView style={s.root}><BotScreen onBack={() => { try { location.hash = ''; } catch (e) { } setBotView(false); }} /></SafeAreaView>;
 
   if (sel) {
     return (
