@@ -61,9 +61,8 @@ async function worker() {
         return { Y, lL, lS };
       };
       const base = features(k); const b = run('base', base.Z, base.raw, 0.3);
-      run('l2strong', base.Z, base.raw, 1.0);
       const fb = features(k, btcCtx); run('btc', fb.Z, fb.raw, 0.3);
-      if (k4) { const fm = features(k, null, k4); run('mtf', fm.Z, fm.raw, 0.3); }
+      if (k4) { const fm = features(k, null, k4); run('mtf', fm.Z, fm.raw, 0.3); const fmb = features(k, btcCtx, k4); run('mtfbtc', fmb.Z, fmb.raw, 0.3); }
       // dane do modelu wspólnego (wszystkie coiny razem)
       const pool = { t: [], Z: [], L: [], S: [] };
       for (let i = 0; i < k.c.length - 1 - H; i++) if (base.Z[i] && b.Y.L[i] !== null && b.Y.S[i] !== null) { pool.t.push(k.t[i]); pool.Z.push(base.Z[i]); pool.L.push(b.Y.L[i]); pool.S.push(b.Y.S[i]); }
@@ -156,14 +155,10 @@ async function main() {
   console.log(`Policzone coiny: ${coins.length} (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
 
   const variants = {};
-  for (const name of ['base', 'l2strong', 'btc', 'mtf']) {
+  for (const name of ['base', 'btc', 'mtf', 'mtfbtc']) {
     const cr = coins.filter(c => c.recs[name]).map(c => ({ coin: c.coin, L: c.recs[name].L, S: c.recs[name].S }));
     if (cr.length) variants[name] = cr;
   }
-  try {
-    const pp = pooledPreds(coins, H);
-    variants.pooled = coins.map((c, i) => ({ coin: c.coin, L: pp[i].L, S: pp[i].S }));
-  } catch (e) { console.log('model wspólny: ' + e.message); }
 
   const byLift = (a, b) => b.lift - a.lift || b.p - a.p;
   const byP = (a, b) => b.p - a.p;
@@ -177,12 +172,14 @@ async function main() {
     'bez testu (tylko p>próg)': { filter: x => x.p > BE + 0.02, sort: byLift, top: 10 },
     'TOP 5 zamiast 10': { filter: x => passed(x) && x.p > BE + 0.02, sort: byLift, top: 5 },
     'p ≥ 45%': { filter: x => passed(x) && x.p >= 0.45, sort: byLift, top: 10 },
+    'przewaga ≥5 pkt + skill ≥1%': { filter: x => x.rskill !== null && x.rskill >= 0.01 && x.p > BE + 0.02 && x.lift >= 0.05, sort: byLift, top: 10 },
+    'przewaga ≥6 pkt': { filter: x => passed(x) && x.p > BE + 0.02 && x.lift >= 0.06, sort: byLift, top: 10 },
   };
   console.log('\nTryb 2:1 · próg opłacalności 33% · wynik R: cel +2, stop −1, brak rozstrzygnięcia 0');
   for (const [vn, cr] of Object.entries(variants)) {
     console.log(`\n=== MODEL: ${vn} ===`);
     for (const [rn, rule] of Object.entries(rules)) {
-      if (vn !== 'base' && !/^APLIKACJA|≥5 pkt|≥1%/.test(rn)) continue;
+      if (vn !== 'base' && !/^APLIKACJA|≥5 pkt|≥6 pkt|≥8 pkt|≥1%/.test(rn)) continue;
       const r = simulate(cr, rule, H);
       console.log(`${rn.padEnd(46)} scenariuszy ${String(r.n).padStart(5)} | trafione ${(r.hit * 100).toFixed(1)}% | średnio ${r.avgR >= 0 ? '+' : ''}${r.avgR.toFixed(3)}R`);
     }
