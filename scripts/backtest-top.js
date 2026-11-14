@@ -14,17 +14,7 @@ const VALID_N = 1000, REFIT = 200, BE = 1 / 3;
 
 // ---------- Wątek: dane i predykcje per coin ----------
 function features(k, ctx, k4) {
-  const { F, raw } = I.buildFeatures(k, ctx);
-  if (k4) { // kilka interwałów naraz: dla świecy 1h dokładamy trend i RSI z ostatniej zamkniętej świecy 4h
-    const f4 = I.buildFeatures(k4).raw; const t4 = k4.t; let j = 0;
-    for (let i = 0; i < F.length; i++) {
-      if (!F[i]) continue;
-      while (j + 1 < t4.length && t4[j + 1] + 4 * 36e5 <= k.t[i] + 36e5) j++;
-      const r4 = t4[j] + 4 * 36e5 <= k.t[i] + 36e5 ? f4[j] : null;
-      if (!r4) { F[i] = null; continue; }
-      F[i] = [...F[i], r4.trend, r4.rsi / 100, r4.slope];
-    }
-  }
+  const { F, raw } = I.buildFeatures(k, ctx, k4);
   return { Z: I.zscore(F), raw };
 }
 function labels(k, raw, H) {

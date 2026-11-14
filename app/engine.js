@@ -77,14 +77,17 @@ function atrArr(h, l, c, n = 14) {
 // Kontekst rynku (BTC) w tej samej świecy: trend BTC (odległość od EMA50 w ATR) i ruch z ostatnich 6 świec
 function btcContext(kb) {
   if (!kb || !kb.c || kb.c.length < 60) return null;
-  const e50 = ema(kb.c, 50), atr = atrArr(kb.h, kb.l, kb.c, 14); const map = new Map();
+  const e50 = ema(kb.c, 50), atr = atrArr(kb.h, kb.l, kb.c, 14); const t = [], v = [];
   for (let i = 6; i < kb.c.length; i++) {
     const a = atr[i]; if (!(a > 0)) continue;
-    map.set(kb.t[i], [(kb.c[i] - e50[i]) / a, (kb.c[i] - kb.c[i - 6]) / a]);
+    t.push(kb.t[i]); v.push([(kb.c[i] - e50[i]) / a, (kb.c[i] - kb.c[i - 6]) / a]);
   }
-  return map;
+  return { t, v };
 }
-function buildFeatures(k, ctx) {
+// ctx: kontekst BTC ({t, v} – bierzemy ostatnią świecę BTC nie późniejszą niż świeca coina)
+// k4: świece 4h tego samego coina – dla modelu 1h dokładamy trend, RSI i nachylenie z ostatniej ZAMKNIĘTEJ świecy 4h
+function buildFeatures(k, ctx, k4) {
+  const f4 = k4 ? buildFeatures(k4).raw : null; let j4 = 0, jb = 0;
   const { h, l, c, v, tb } = k; const n = c.length;
   const e20 = ema(c, 20), e50 = ema(c, 50), atr = atrArr(h, l, c, 14), rsi = rsiArr(c, 14), vs = smaArr(v, 20);
   const F = new Array(n).fill(null); const raw = new Array(n).fill(null);
@@ -108,7 +111,17 @@ function buildFeatures(k, ctx) {
     };
     raw[i] = r;
     F[i] = [r.trend, r.slope, r.rsi / 100, Math.log(Math.max(r.volRatio, 1e-3)), r.buy - 0.5, r.cvd, r.range];
-    if (ctx) { const b = ctx.get(k.t[i]); if (!b) { F[i] = null; raw[i] = null; continue; } F[i].push(b[0], b[1]); r.btcTrend = b[0]; }
+    if (k4) {
+      while (j4 + 1 < k4.t.length && k4.t[j4 + 1] + 4 * 36e5 <= k.t[i] + 36e5) j4++;
+      const r4 = k4.t[j4] + 4 * 36e5 <= k.t[i] + 36e5 ? f4[j4] : null;
+      if (!r4) { F[i] = null; raw[i] = null; continue; }
+      F[i].push(r4.trend, r4.rsi / 100, r4.slope);
+    }
+    if (ctx) {
+      while (jb + 1 < ctx.t.length && ctx.t[jb + 1] <= k.t[i]) jb++;
+      if (!ctx.t.length || ctx.t[jb] > k.t[i]) { F[i] = null; raw[i] = null; continue; }
+      const b = ctx.v[jb]; F[i].push(b[0], b[1]); r.btcTrend = b[0];
+    }
   }
   return { F, raw };
 }
@@ -196,11 +209,11 @@ function dirModel(Z, Y, labelled, cur, H, thr) {
   return { p: p[0], prior: model.prior[0], skill, hiHit, hiN, nVal, weak: skill === null || skill <= 0 };
 }
 
-function analyze(k, iv, ctx) {
+function analyze(k, iv, ctx, k4) {
   const cfg = CFG[iv] || ALT_CFG[iv];
   const { H, m, horizonTxt, label } = cfg; const scale = cfg.scale || 1;
   const n = k.c.length; const cur = n - 2; // ostatnia ZAMKNIĘTA świeca
-  const { F, raw } = buildFeatures(k, ctx);
+  const { F, raw } = buildFeatures(k, ctx, k4);
   if (!F[cur]) return { error: 'Za mało danych' };
   const Z = zscore(F);
   const Y = outcomes(k, raw, H, m);
@@ -323,6 +336,8 @@ const FACTORS = [
   ['Presja kupujących', 'jaka część ostatnich transakcji to zakupy'],
   ['Delta wolumenu (CVD)', 'czy przez ostatnie 12 świec przeważało kupowanie czy sprzedawanie'],
   ['Pozycja w zakresie', 'czy cena jest przy szczycie czy przy dołku z ostatnich 20 świec'],
+  ['Trend Bitcoina (24 godz. i 3 dni)', 'czy cały rynek, czyli BTC, rośnie czy spada'],
+  ['Trend z wyższego interwału (24 godz.)', 'trend, RSI i nachylenie średniej ze świec 4h'],
 ];
 
 // ---------- Wynik w zwartej postaci (do JSON i do UI) ----------
@@ -415,10 +430,12 @@ function rankTop(coins, iv, dir = 'all', n = 10, mode = 'equal') {
   rows.sort((x, y) => (x.tier - y.tier) || (y.lift - x.lift) || (y.d.p - x.d.p));
   return rows.slice(0, n);
 }
+const TOP_SKILL = 0.01, TOP_LIFT = 0.05;
 const liftOf = d => (d && d.p !== null && d.hist !== null && d.hist !== undefined ? d.p - d.hist : 0);
 function rankTier(r) {
   if (r.d.weak || r.d.tooWide || isExtreme(r.coin) || isIlliquid(r.coin) || (r.a && r.a.regime)) return 2;
-  return r.d.p > (MODE_BE[r.d.mode] || 0.5) + 0.02 ? 0 : 1;
+  // TOP: test wyraźnie zdany (skill ≥ 1%) i przewaga nad normą ≥ 5 pkt – w backteście najlepsza zasada wyboru
+  return r.d.p > (MODE_BE[r.d.mode] || 0.5) + 0.02 && (r.d.skill || 0) >= TOP_SKILL && liftOf(r.d) >= TOP_LIFT ? 0 : 1;
 }
 // Krótki powód miejsca w TOP 10 (do wyświetlenia przy coinie)
 function rankReason(r) {
@@ -429,7 +446,8 @@ function rankReason(r) {
     return { good: false, text: `Na końcu listy: ${why}` };
   }
   if (r.tier === 0) return { good: true, text: `Dlaczego tu: ${liftTxt} · powyżej progu · test na historii zdany ✓` };
-  return { good: false, text: `Dlaczego tu: ${liftTxt} · test zdany, ale pod progiem opłacalności` };
+  const why = !(r.d.p > (MODE_BE[r.d.mode] || 0.5) + 0.02) ? 'pod progiem opłacalności' : liftOf(r.d) < TOP_LIFT ? 'przewaga poniżej +5 pkt' : 'test zdany tylko na granicy';
+  return { good: false, text: `Niżej na liście: ${liftTxt} · ${why}` };
 }
 
 // ---------- Kategorie coinów ----------

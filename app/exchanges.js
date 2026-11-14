@@ -248,6 +248,9 @@ async function analyzeCoin(E, ticker, onProgress, opts = {}) {
   const res = {}; let spark = []; let k1h = null; let k4h = null; let err4h = null; let ageDays = null; let k1d = null; let err1d = null;
   const NEED_DAYS = { '1h': 9, '4h': 16, '1d': 50, '30d': 80 }; // ile dni historii potrzeba na dany horyzont
   const HZ = { '1h': '24 godz.', '4h': '3 dni', '1d': '14 dni', '30d': '30 dni' };
+  // Kontekst rynku i wyższy interwał (tylko w skanerze): BTC dla 24 godz. i 3 dni, świece 4h w modelu 24 godz.
+  const ctx = opts.ctx || null; let pre4 = null;
+  if (ctx) { try { pre4 = await getKlines(ticker.ex, ticker.sym, '4h', E.HISTORY); } catch (e) { } }
   const tooYoung = iv => ({ error: `Za młody coin: ${ticker.base} jest na giełdzie od ok. ${ageDays} dni. Na prognozę na ${HZ[iv]} potrzeba min. ok. ${NEED_DAYS[iv]} dni historii – statystyka pojawi się, gdy coin będzie starszy.`, young: true });
   for (const iv of Object.keys(E.CFG)) {
     if (iv === '30d') {
@@ -262,7 +265,7 @@ async function analyzeCoin(E, ticker, onProgress, opts = {}) {
       continue;
     }
     try {
-      const k = await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
+      const k = iv === '4h' && pre4 ? pre4 : await getKlines(ticker.ex, ticker.sym, iv, E.HISTORY);
       if (iv === '1d') k1d = k;
       if (iv === '1h') k1h = k;
       if (iv === '1h') { spark = k.c.slice(-48).map(x => +x.toPrecision(6)); if (k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5)); }
@@ -279,6 +282,13 @@ async function analyzeCoin(E, ticker, onProgress, opts = {}) {
       } else if (k.c.length < 200) {
         if (k.c.length < E.HISTORY && ageDays === null && k.t.length) ageDays = Math.max(1, Math.round((Date.now() - k.t[0]) / 864e5));
         res[iv] = tooYoung(iv);
+      } else if (ctx && iv === '1h') {
+        const mtf = pre4 && pre4.c.length >= 200 ? pre4 : null;
+        res[iv] = E.compact(E.analyze(k, iv, ctx['1h'], mtf));
+        if (res[iv].error) res[iv] = E.compact(E.analyze(k, iv)); // awaryjnie bez dodatkowych cech
+      } else if (ctx && iv === '4h') {
+        res[iv] = E.compact(E.analyze(k, iv, ctx['4h']));
+        if (res[iv].error) res[iv] = E.compact(E.analyze(k, iv));
       } else res[iv] = E.compact(E.analyze(k, iv));
     } catch (e) { res[iv] = { error: e.message || 'Błąd pobierania' }; if (iv === '4h') err4h = res[iv].error; if (iv === '1d') err1d = res[iv].error; }
     if (onProgress) onProgress(iv);

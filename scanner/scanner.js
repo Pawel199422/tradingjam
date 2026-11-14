@@ -17,7 +17,7 @@ const CONF = {
   MIN_QV_BINGX: 3e5,
   THREADS: Math.max(1, Math.min(+(process.env.THREADS || 4), os.cpus().length)), // równoległe wątki (obliczenia)
   CONCURRENCY: 2,                                  // równoległe coiny w jednym wątku
-  TIME_LIMIT_MIN: +(process.env.TIME_LIMIT_MIN || 38), // zapas przed limitem joba
+  TIME_LIMIT_MIN: +(process.env.TIME_LIMIT_MIN || 50), // zapas przed limitem joba
   OUT: process.env.OUT || path.join(__dirname, '..', 'out', 'results.json'),
   HISTORY_IN: process.env.HISTORY_IN || null,     // lokalny plik historii (testy); domyślnie pobierana z gałęzi data
   HISTORY_MAX_CLOSED: 3000,
@@ -87,6 +87,10 @@ async function main() {
   for (let i = 0; i < Math.max(binance.length, bingx.length, okx.length); i++) { if (binance[i]) universe.push(binance[i]); if (bingx[i]) universe.push(bingx[i]); if (okx[i]) universe.push(okx[i]); }
   console.log(`Do analizy: ${binance.length} z Binance + ${bingx.length} z BingX + ${okx.length} z OKX`);
 
+  // Kontekst rynku: świece BTC (1h i 4h) – dodatkowe cechy modeli 24 godz. i 3 dni
+  const btcK = {};
+  for (const iv of ['1h', '4h']) { try { btcK[iv] = await X.binanceKlines('BTCUSDT', iv, E.HISTORY); } catch (e) { errors.push('BTC ' + iv + ': ' + e.message); } }
+
   // ---------- Historia wyników: wczytanie poprzedniej ----------
   let history = [];
   try {
@@ -106,7 +110,7 @@ async function main() {
   const shards = Array.from({ length: CONF.THREADS }, () => []);
   universe.forEach((t, i) => shards[i % CONF.THREADS].push(t));
   await Promise.all(shards.map(list => new Promise(resolve => {
-    const w = new Worker(__filename, { workerData: { pathKeys: [...pathKeys], list, cg, funding, onBinance: [...onBinance], onBingx: [...onBingx], onOkx: [...onOkx], t0, limit: CONF.TIME_LIMIT_MIN, conc: CONF.CONCURRENCY } });
+    const w = new Worker(__filename, { workerData: { btcK, pathKeys: [...pathKeys], list, cg, funding, onBinance: [...onBinance], onBingx: [...onBingx], onOkx: [...onOkx], t0, limit: CONF.TIME_LIMIT_MIN, conc: CONF.CONCURRENCY } });
     w.on('message', m => {
       if (m.coin) { if (m.coin._path) { paths.set(m.coin.ex + m.coin.sym, m.coin._path); delete m.coin._path; } coins.push(m.coin); }
       if (m.error) errors.push(m.error);
@@ -176,6 +180,7 @@ async function main() {
 async function workerMain() {
   const { list, cg, funding, t0, limit, conc } = workerData;
   const pathKeys = new Set(workerData.pathKeys || []);
+  const ctx = workerData.btcK && workerData.btcK['1h'] && workerData.btcK['4h'] ? { '1h': E.btcContext(workerData.btcK['1h']), '4h': E.btcContext(workerData.btcK['4h']) } : null;
   const onBinance = new Set(workerData.onBinance), onBingx = new Set(workerData.onBingx), onOkx = new Set(workerData.onOkx || []);
   let next = 0;
   async function loop() {
@@ -183,7 +188,7 @@ async function workerMain() {
       if ((Date.now() - t0) / 60000 > limit) { parentPort.postMessage({ timedOut: true }); return; }
       const t = list[next++];
       try {
-        const c = await X.analyzeCoin(E, t, null, { path: pathKeys.has(t.ex + t.sym) });
+        const c = await X.analyzeCoin(E, t, null, { path: pathKeys.has(t.ex + t.sym), ctx });
         c.cat = E.catOf(t.base, cg);
         { const f = funding[t.base] !== undefined ? funding[t.base] : funding[E.cleanBase(t.base)]; if (f !== undefined) c.funding = +f.toPrecision(4); }
         c.exs = [t.ex, onBinance.has(E.cleanBase(t.base)) && 'binance', onBingx.has(E.cleanBase(t.base)) && 'bingx', onOkx.has(E.cleanBase(t.base)) && 'okx'].filter((x, i, arr) => x && arr.indexOf(x) === i);
