@@ -148,7 +148,7 @@ function baseRates(Y, idx) {
 
 // Model dobrany do coina: regresja logistyczna (3 scenariusze) trenowana na historii TEGO coina
 const L2 = 0.3, ITERS = 200, LR = 0.5;
-function fitModel(Z, Y, idx, init) {
+function fitModel(Z, Y, idx, init, l2 = L2) {
   const d = Z[idx[0]].length; const n = idx.length; const prior = baseRates(Y, idx);
   const W = init ? init.map(r => r.slice()) : [0, 1, 2].map(c => {
     const r = new Array(d + 1).fill(0); r[d] = Math.log(Math.max(prior[c], 0.02)); return r;
@@ -163,7 +163,7 @@ function fitModel(Z, Y, idx, init) {
       const S = e0 + e1 + e2; const p = [e0 / S, e1 / S, e2 / S];
       for (let c = 0; c < 3; c++) { const gc = p[c] - (c === y ? 1 : 0); const Gc = G[c]; for (let q = 0; q < d; q++) Gc[q] += gc * x[q]; Gc[d] += gc; }
     }
-    for (let c = 0; c < 3; c++) for (let q = 0; q <= d; q++) W[c][q] -= LR * (G[c][q] / n + (q < d ? L2 * W[c][q] : 0));
+    for (let c = 0; c < 3; c++) for (let q = 0; q <= d; q++) W[c][q] -= LR * (G[c][q] / n + (q < d ? l2 * W[c][q] : 0));
   }
   return { W, prior };
 }
@@ -516,4 +516,7 @@ function historyBreakdown(list, iv) {
   ].map(s => ({ ...s, rows: s.rows.filter(r => r.n > 0) })).filter(s => s.rows.length);
 }
 
-module.exports = { historyBreakdown, btcContext, HORIZON_MS, resolvePick, historyStats, rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+// Wnętrze modelu – do eksperymentów (scripts/backtest-top.js)
+const _internal = { buildFeatures, zscore, outcomes, fitModel, predictP, brier, baseRates };
+
+module.exports = { _internal, historyBreakdown, btcContext, HORIZON_MS, resolvePick, historyStats, rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };

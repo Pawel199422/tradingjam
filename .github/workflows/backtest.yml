@@ -1,0 +1,22 @@
+name: Backtest TOP 10
+
+on:
+  workflow_dispatch:
+    inputs:
+      iv:
+        description: 'Horyzont: 1h (24 godz.) albo 4h (3 dni)'
+        default: '1h'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Backtest
+        env:
+          IV: ${{ github.event.inputs.iv }}
+        run: node scripts/backtest-top.js
