@@ -678,6 +678,23 @@ function Results() {
           </>
         )}
       </View>
+      {st.n >= 10 ? (
+        <View style={[s.card, { marginTop: 10 }]}>
+          <Text style={{ color: C.text, fontWeight: '800' }}>Co działa najlepiej?</Text>
+          <Text style={s.small}>Trafione cele w grupach scenariuszy. Przy małych liczbach (np. poniżej 30) różnice mogą być przypadkowe.</Text>
+          {E.historyBreakdown(hist, iv).map(g => (
+            <View key={g.title} style={{ marginTop: 8 }}>
+              <Text style={[s.meta, { fontWeight: '700' }]}>{g.title}</Text>
+              {g.rows.map(r => (
+                <View key={r.label} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                  <Text style={s.li}>{r.label} <Text style={s.meta}>({r.n})</Text></Text>
+                  <Text style={{ color: r.hit === null ? C.mute : r.hit > be ? C.up : C.down, fontWeight: '700' }}>{r.hit === null ? '–' : pct0(r.hit)} · {r.sumR >= 0 ? '+' : ''}{r.sumR.toFixed(1)}R</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : null}
       {closed.length ? <Text style={s.h3}>Ostatnio rozliczone</Text> : null}
       {closed.slice(0, 40).map(p => (
         <View key={p.id} style={s.row}>

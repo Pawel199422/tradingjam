@@ -1,0 +1,16 @@
+name: Eksperyment (BTC)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Porównanie modelu bez i z kontekstem BTC
+        run: node scripts/experiment-btc.js

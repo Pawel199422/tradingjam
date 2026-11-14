@@ -129,7 +129,9 @@ async function main() {
   // Zbyt stare otwarte (brak danych > 3 dni po końcu) – zamykamy bez wyniku
   history = history.map(p => (p.status === 'open' && now > p.end + 3 * 864e5 ? { ...p, status: 'expired', closedAt: p.end, r: 0, noData: true } : p));
   let added = 0;
+  const btcCoin = coins.find(c => c.ex === 'binance' && c.base === 'BTC');
   for (const iv of ['1h', '4h', '1d', '30d']) {
+    const btcA = btcCoin && btcCoin.res[iv] && !btcCoin.res[iv].error ? btcCoin.res[iv] : null;
     for (const r of E.rankTop(coins, iv, 'all', 10, 'big')) {
       if (r.tier !== 0) continue; // tylko wiarygodne i powyżej progu
       if (history.some(p => p.status === 'open' && p.ex === r.coin.ex && p.sym === r.coin.sym && p.iv === iv && p.dir === r.d.dir)) continue;
@@ -137,6 +139,9 @@ async function main() {
         id: `${now}-${iv}-${r.coin.ex}-${r.coin.sym}-${r.d.dir}`, t: now, end: now + E.HORIZON_MS[iv], iv, mode: 'big',
         ex: r.coin.ex, sym: r.coin.sym, base: r.coin.base, dir: r.d.dir, p: +r.d.p.toFixed(3), hist: r.d.hist !== null ? +r.d.hist.toFixed(3) : null,
         price: r.coin.res[iv].price, target: r.d.target, stop: r.d.stop, status: 'open',
+        // do późniejszej analizy, co działa najlepiej
+        lift: +r.lift.toFixed(3), skill: r.d.skill !== null ? +r.d.skill.toFixed(4) : null, qv: Math.round(r.coin.qv || 0),
+        cat: r.coin.cat || null, btcTrend: btcA && btcA.raw ? +btcA.raw.trend.toFixed(2) : null,
       });
       added++;
     }

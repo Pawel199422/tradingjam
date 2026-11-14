@@ -74,7 +74,17 @@ function atrArr(h, l, c, n = 14) {
 }
 
 // Cechy opisujące "jak wygląda wykres" w danej świecy
-function buildFeatures(k) {
+// Kontekst rynku (BTC) w tej samej świecy: trend BTC (odległość od EMA50 w ATR) i ruch z ostatnich 6 świec
+function btcContext(kb) {
+  if (!kb || !kb.c || kb.c.length < 60) return null;
+  const e50 = ema(kb.c, 50), atr = atrArr(kb.h, kb.l, kb.c, 14); const map = new Map();
+  for (let i = 6; i < kb.c.length; i++) {
+    const a = atr[i]; if (!(a > 0)) continue;
+    map.set(kb.t[i], [(kb.c[i] - e50[i]) / a, (kb.c[i] - kb.c[i - 6]) / a]);
+  }
+  return map;
+}
+function buildFeatures(k, ctx) {
   const { h, l, c, v, tb } = k; const n = c.length;
   const e20 = ema(c, 20), e50 = ema(c, 50), atr = atrArr(h, l, c, 14), rsi = rsiArr(c, 14), vs = smaArr(v, 20);
   const F = new Array(n).fill(null); const raw = new Array(n).fill(null);
@@ -98,6 +108,7 @@ function buildFeatures(k) {
     };
     raw[i] = r;
     F[i] = [r.trend, r.slope, r.rsi / 100, Math.log(Math.max(r.volRatio, 1e-3)), r.buy - 0.5, r.cvd, r.range];
+    if (ctx) { const b = ctx.get(k.t[i]); if (!b) { F[i] = null; raw[i] = null; continue; } F[i].push(b[0], b[1]); r.btcTrend = b[0]; }
   }
   return { F, raw };
 }
@@ -185,11 +196,11 @@ function dirModel(Z, Y, labelled, cur, H, thr) {
   return { p: p[0], prior: model.prior[0], skill, hiHit, hiN, nVal, weak: skill === null || skill <= 0 };
 }
 
-function analyze(k, iv) {
+function analyze(k, iv, ctx) {
   const cfg = CFG[iv] || ALT_CFG[iv];
   const { H, m, horizonTxt, label } = cfg; const scale = cfg.scale || 1;
   const n = k.c.length; const cur = n - 2; // ostatnia ZAMKNIĘTA świeca
-  const { F, raw } = buildFeatures(k);
+  const { F, raw } = buildFeatures(k, ctx);
   if (!F[cur]) return { error: 'Za mało danych' };
   const Z = zscore(F);
   const Y = outcomes(k, raw, H, m);
@@ -490,4 +501,19 @@ function historyStats(list, iv) {
   return { n: cl.length, win, loss, exp, open: list.filter(p => p.iv === iv && p.status === 'open').length, hit: win + loss ? win / (win + loss) : null, sumR };
 }
 
-module.exports = { HORIZON_MS, resolvePick, historyStats, rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
+// Rozbicie wyników na grupy (przewaga, kierunek, zgodność z BTC, giełda)
+function historyBreakdown(list, iv) {
+  const cl = list.filter(p => p.iv === iv && p.status !== 'open' && !p.noData);
+  const grp = (label, f) => { const g = cl.filter(f); const w = g.filter(p => p.status === 'win').length, l = g.filter(p => p.status === 'loss').length; return { label, n: g.length, hit: w + l ? w / (w + l) : null, sumR: g.reduce((a, p) => a + (p.r || 0), 0) }; };
+  const withBtc = p => p.btcTrend !== null && p.btcTrend !== undefined;
+  const sameBtc = p => withBtc(p) && ((p.dir === 'LONG' && p.btcTrend > 0.5) || (p.dir === 'SHORT' && p.btcTrend < -0.5));
+  const againstBtc = p => withBtc(p) && ((p.dir === 'LONG' && p.btcTrend < -0.5) || (p.dir === 'SHORT' && p.btcTrend > 0.5));
+  return [
+    { title: 'Przewaga nad normą', rows: [grp('+5 pkt i więcej', p => p.lift !== undefined && p.lift >= 0.05), grp('poniżej +5 pkt', p => p.lift !== undefined && p.lift < 0.05)] },
+    { title: 'Kierunek', rows: [grp('LONG', p => p.dir === 'LONG'), grp('SHORT', p => p.dir === 'SHORT')] },
+    { title: 'Względem trendu BTC', rows: [grp('zgodnie z BTC', sameBtc), grp('pod prąd BTC', againstBtc), grp('BTC bez trendu', p => withBtc(p) && !sameBtc(p) && !againstBtc(p))] },
+    { title: 'Giełda', rows: [grp('Binance', p => p.ex === 'binance'), grp('BingX', p => p.ex === 'bingx'), grp('OKX', p => p.ex === 'okx')] },
+  ].map(s => ({ ...s, rows: s.rows.filter(r => r.n > 0) })).filter(s => s.rows.length);
+}
+
+module.exports = { historyBreakdown, btcContext, HORIZON_MS, resolvePick, historyStats, rankReason, liftOf, LOW_QV, isIlliquid, REGIME_X, FACTORS, BIG, MODE_BE, MODE_RR, verdict, ALT_CFG, MIN_DAILY, EXTREME_PCT, isExtreme, weakWhy, SAFE, BREAK_EVEN, CATS, catOf, cleanBase, CFG, HISTORY, VALID_N, EDGE_MIN, parseKlines, analyze, reasons, compact, dirOf, rankTop };
